@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Dark chocolate gelato">
+  <defs><linearGradient id="b" x2="1" y2="1"><stop stop-color="#f4e9df"/><stop offset="1" stop-color="#dac4b3"/></linearGradient></defs>
+  <rect width="800" height="600" fill="url(#b)"/><ellipse cx="400" cy="510" rx="210" ry="30" fill="#301d17" opacity=".18"/>
+  <path d="M270 300h260l-44 220H314z" fill="#d99a63"/><circle cx="330" cy="275" r="105" fill="#6f4233"/><circle cx="450" cy="245" r="125" fill="#7c4b38"/><circle cx="515" cy="300" r="90" fill="#583127"/>
+  <g fill="#bf8a6f"><rect x="380" y="165" width="32" height="18" rx="4" transform="rotate(-15 380 165)"/><rect x="478" y="260" width="28" height="16" rx="4"/></g>
+</svg>

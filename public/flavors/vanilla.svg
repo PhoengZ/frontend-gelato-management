@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Vanilla gelato">
+  <defs><linearGradient id="b" x2="1" y2="1"><stop stop-color="#fffdf2"/><stop offset="1" stop-color="#e9e1c9"/></linearGradient></defs>
+  <rect width="800" height="600" fill="url(#b)"/><ellipse cx="400" cy="510" rx="210" ry="30" fill="#6b6048" opacity=".12"/>
+  <path d="M270 300h260l-44 220H314z" fill="#d8a06c"/><circle cx="330" cy="275" r="105" fill="#f1e8c8"/><circle cx="450" cy="245" r="125" fill="#fff4d4"/><circle cx="515" cy="300" r="90" fill="#e9dfbc"/>
+  <g fill="#795a3c"><circle cx="400" cy="180" r="3"/><circle cx="480" cy="260" r="3"/><circle cx="320" cy="290" r="3"/></g>
+</svg>
