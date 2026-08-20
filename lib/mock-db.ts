@@ -225,6 +225,61 @@ export function updateFlavorInventory(flavorId: string, input: { availablePortio
   return structuredClone(flavor);
 }
 
+type FlavorInput = Pick<Flavor, "name" | "description" | "pricePerPortion" | "allergens" | "availablePortions" | "imageUrl"> & { isAvailable?: boolean };
+
+function validateFlavor(input: Partial<FlavorInput>) {
+  if (input.name !== undefined && input.name.trim().length < 2) throw new MockApiError(400, { code: "INVALID_FLAVOR", message: "ชื่อเมนูต้องมีอย่างน้อย 2 ตัวอักษร" });
+  if (input.description !== undefined && !input.description.trim()) throw new MockApiError(400, { code: "INVALID_FLAVOR", message: "กรุณากรอกคำอธิบายเมนู" });
+  if (input.pricePerPortion !== undefined && (!Number.isFinite(input.pricePerPortion) || input.pricePerPortion <= 0)) throw new MockApiError(400, { code: "INVALID_PRICE", message: "ราคาต้องมากกว่า 0" });
+  if (input.availablePortions !== undefined && (!Number.isInteger(input.availablePortions) || input.availablePortions < 0)) throw new MockApiError(400, { code: "INVALID_STOCK", message: "จำนวนสต็อกไม่ถูกต้อง" });
+  if (input.imageUrl !== undefined && (!input.imageUrl.startsWith("/") || input.imageUrl.startsWith("//"))) throw new MockApiError(400, { code: "INVALID_IMAGE", message: "รูปเมนูต้องเป็น path ภายในเว็บไซต์ เช่น /hero/1.png" });
+}
+
+export function createFlavor(input: FlavorInput): Flavor {
+  validateFlavor(input);
+  const baseId = input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "flavor";
+  const id = mockDb.flavors.some((flavor) => flavor.id === baseId) ? `${baseId}-${crypto.randomUUID().slice(0, 6)}` : baseId;
+  const flavor: Flavor = {
+    id,
+    name: input.name.trim(),
+    description: input.description.trim(),
+    pricePerPortion: input.pricePerPortion,
+    allergens: Array.from(new Set(input.allergens.map((item) => item.trim()).filter(Boolean))),
+    availablePortions: input.availablePortions,
+    imageUrl: input.imageUrl,
+    isAvailable: input.isAvailable ?? input.availablePortions > 0
+  };
+  mockDb.flavors.push(flavor);
+  return structuredClone(flavor);
+}
+
+export function updateFlavor(flavorId: string, input: Partial<FlavorInput>): Flavor {
+  const flavor = mockDb.flavors.find((entry) => entry.id === flavorId);
+  if (!flavor) throw new MockApiError(404, { code: "FLAVOR_NOT_FOUND", message: "ไม่พบเมนูนี้" });
+  validateFlavor(input);
+  if (input.name !== undefined) flavor.name = input.name.trim();
+  if (input.description !== undefined) flavor.description = input.description.trim();
+  if (input.pricePerPortion !== undefined) flavor.pricePerPortion = input.pricePerPortion;
+  if (input.allergens !== undefined) flavor.allergens = Array.from(new Set(input.allergens.map((item) => item.trim()).filter(Boolean)));
+  if (input.availablePortions !== undefined) flavor.availablePortions = input.availablePortions;
+  if (input.imageUrl !== undefined) flavor.imageUrl = input.imageUrl;
+  flavor.isAvailable = input.isAvailable ?? flavor.availablePortions > 0;
+  for (const batch of mockDb.batches.filter((entry) => entry.flavorId === flavorId)) batch.flavorName = flavor.name;
+  return structuredClone(flavor);
+}
+
+export function deleteFlavor(flavorId: string): Flavor {
+  const index = mockDb.flavors.findIndex((entry) => entry.id === flavorId);
+  if (index < 0) throw new MockApiError(404, { code: "FLAVOR_NOT_FOUND", message: "ไม่พบเมนูนี้" });
+  if (Array.from(mockDb.orders.values()).some((order) => order.items.some((item) => item.flavorId === flavorId))) {
+    throw new MockApiError(409, { code: "FLAVOR_IN_USE", message: "ลบเมนูที่มีประวัติการขายแล้วไม่ได้ กรุณาปิดการขายแทน" });
+  }
+  const [deleted] = mockDb.flavors.splice(index, 1);
+  mockDb.batches = mockDb.batches.filter((batch) => batch.flavorId !== flavorId);
+  mockDb.waste = mockDb.waste.filter((waste) => waste.flavorId !== flavorId);
+  return structuredClone(deleted);
+}
+
 export function recordWaste(input: { batchId: string; portions: number; reason: string }): WasteRecord {
   const batch = mockDb.batches.find((entry) => entry.id === input.batchId);
   if (!batch || !Number.isInteger(input.portions) || input.portions <= 0 || !input.reason.trim()) {
@@ -261,13 +316,29 @@ export function analyticsSummary(): AnalyticsSummary {
     current.portions += item.portions;
     waste.set(item.flavorId, current);
   }
+  const today = new Date();
+  const salesTrend = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (6 - index));
+    const dateKey = date.toISOString().slice(0, 10);
+    const dailyOrders = orders.filter((order) => order.createdAt.slice(0, 10) === dateKey);
+    return {
+      date: dateKey,
+      label: date.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "UTC" }),
+      revenue: dailyOrders.reduce((sum, order) => sum + order.totalAmount, 0),
+      orders: dailyOrders.length,
+      scoops: dailyOrders.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.portions, 0), 0)
+    };
+  });
   return {
     totalRevenue: orders.reduce((sum, order) => sum + (order.totalAmount ?? 0), 0),
     totalOrders: orders.length,
     totalScoops: orders.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + item.portions, 0), 0),
     totalWaste: mockDb.waste.reduce((sum, item) => sum + item.portions, 0),
     salesByFlavor: Array.from(sales, ([flavorId, value]) => ({ flavorId, ...value })),
-    wasteByFlavor: Array.from(waste, ([flavorId, value]) => ({ flavorId, ...value }))
+    wasteByFlavor: Array.from(waste, ([flavorId, value]) => ({ flavorId, ...value })),
+    salesTrend
   };
 }
 

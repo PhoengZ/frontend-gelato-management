@@ -110,4 +110,5 @@ export interface AnalyticsSummary {
   totalWaste: number;
   salesByFlavor: Array<{ flavorId: string; flavorName: string; portions: number; revenue: number }>;
   wasteByFlavor: Array<{ flavorId: string; flavorName: string; portions: number }>;
+  salesTrend: Array<{ date: string; label: string; revenue: number; orders: number; scoops: number }>;
 }

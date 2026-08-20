@@ -13,7 +13,12 @@ export function AuthNav() {
   const logout = useLogout();
   const user = session.data?.user;
 
-  if (!user) return <Link href="/login" className={buttonVariants({ size: "sm" })}>LOGIN</Link>;
+  if (!user) return (
+    <>
+      <Link href="/signup" className="hidden text-xs font-bold transition-colors hover:underline sm:inline">SIGN UP</Link>
+      <Link href="/login" className={buttonVariants({ size: "sm" })}>LOGIN</Link>
+    </>
+  );
 
   return (
     <>

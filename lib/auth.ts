@@ -4,11 +4,19 @@ export const AUTH_COOKIE = "gelatte_session";
 const TOKEN_TTL_SECONDS = 60 * 60 * 8;
 const encoder = new TextEncoder();
 
-const demoUsers: Array<AuthUser & { password: string }> = [
+type StoredUser = AuthUser & { password: string };
+
+const demoUsers: StoredUser[] = [
   { id: "customer-1", name: "Gelatte Customer", email: "customer@gelatte.test", password: "customer123", role: "CUSTOMER" },
   { id: "staff-1", name: "Counter Staff", email: "staff@gelatte.test", password: "staff123", role: "STAFF" },
   { id: "manager-1", name: "Store Manager", email: "manager@gelatte.test", password: "manager123", role: "MANAGER" }
 ];
+
+declare global {
+  var __gelatoFlowRegisteredUsers: StoredUser[] | undefined;
+}
+
+const registeredUsers = globalThis.__gelatoFlowRegisteredUsers ?? (globalThis.__gelatoFlowRegisteredUsers = []);
 
 interface JwtPayload extends AuthUser {
   iat: number;
@@ -68,9 +76,29 @@ export async function verifySessionToken(token: string): Promise<AuthSession | n
 }
 
 export function authenticateDemoUser(email: string, password: string): AuthUser | null {
-  const match = demoUsers.find((user) => user.email.toLowerCase() === email.trim().toLowerCase() && user.password === password);
+  const match = [...demoUsers, ...registeredUsers].find((user) => user.email.toLowerCase() === email.trim().toLowerCase() && user.password === password);
   if (!match) return null;
   return { id: match.id, name: match.name, email: match.email, role: match.role };
+}
+
+export class RegistrationError extends Error {
+  constructor(public code: "INVALID_REGISTRATION" | "EMAIL_EXISTS", message: string) {
+    super(message);
+  }
+}
+
+export function registerCustomer(input: { name: string; email: string; password: string }): AuthUser {
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  if (name.length < 2 || !/^\S+@\S+\.\S+$/.test(email) || input.password.length < 8) {
+    throw new RegistrationError("INVALID_REGISTRATION", "กรุณากรอกชื่อ อีเมล และรหัสผ่านอย่างน้อย 8 ตัวอักษรให้ถูกต้อง");
+  }
+  if ([...demoUsers, ...registeredUsers].some((user) => user.email.toLowerCase() === email)) {
+    throw new RegistrationError("EMAIL_EXISTS", "อีเมลนี้ถูกใช้งานแล้ว");
+  }
+  const stored: StoredUser = { id: crypto.randomUUID(), name, email, password: input.password, role: "CUSTOMER" };
+  registeredUsers.push(stored);
+  return { id: stored.id, name: stored.name, email: stored.email, role: stored.role };
 }
 
 function tokenFromRequest(request: Request) {

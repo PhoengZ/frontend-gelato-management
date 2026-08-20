@@ -128,6 +128,8 @@ export default function StaffPage() {
           <Image
             src={vanillaGelato}
             alt="Gelato decor"
+            width={176}
+            height={176}
             className="h-32 w-32 object-contain sm:h-44 sm:w-44"
           />
         </div>

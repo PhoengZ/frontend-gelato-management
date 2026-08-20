@@ -2,7 +2,7 @@ import type { PropsWithChildren } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiClientError, useCatalog, useCreateOrder } from "@/lib/api";
+import { ApiClientError, useCatalog, useCreateOrder, useSignup } from "@/lib/api";
 
 function wrapper({ children }: PropsWithChildren) {
   return <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>{children}</QueryClientProvider>;
@@ -39,5 +39,15 @@ describe("API hooks", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toBeInstanceOf(ApiClientError);
     expect(result.current.error).toMatchObject({ status: 400, code: "OUT_OF_STOCK", message: "หมดแล้ว" });
+  });
+
+  it("signs up a customer through the auth endpoint", async () => {
+    const session = { user: { id: "c1", name: "Mint", email: "mint@example.com", role: "CUSTOMER" }, expiresAt: new Date().toISOString() };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(session), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useSignup(), { wrapper });
+    result.current.mutate({ name: "Mint", email: "mint@example.com", password: "secure123" });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/auth/signup", expect.objectContaining({ method: "POST", body: expect.stringContaining("mint@example.com") }));
   });
 });

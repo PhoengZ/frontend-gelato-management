@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -158,9 +159,12 @@ export default function LoginPage() {
               </button>
             </div>
           </div>
+
+          <p className="mt-4 text-center text-[11px] font-semibold text-black/60">
+            ยังไม่มีบัญชี? <Link href="/signup" className="font-black uppercase tracking-wider text-black underline underline-offset-4">Create account</Link>
+          </p>
         </div>
       </div>
     </main>
   );
 }
-

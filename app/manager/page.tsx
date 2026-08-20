@@ -1,13 +1,13 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Boxes, ChartNoAxesCombined, Loader2, PackagePlus, Save, Trash2 } from "lucide-react";
+import { Boxes, ChartNoAxesCombined, Loader2, PackagePlus, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useCreateBatch, useInventory, useRecordWaste, useUpdateFlavorInventory } from "@/lib/api";
+import { useCreateBatch, useCreateFlavor, useDeleteFlavor, useInventory, useRecordWaste, useUpdateFlavor } from "@/lib/api";
 import strawberryHero from "@/public/hero/2.png";
 
 const fieldClass = "mt-2 h-11 w-full border border-black/20 bg-white px-3 text-sm outline-none focus:border-[#e66f98]";
@@ -15,8 +15,30 @@ const fieldClass = "mt-2 h-11 w-full border border-black/20 bg-white px-3 text-s
 export default function ManagerPage() {
   const inventory = useInventory();
   const createBatch = useCreateBatch();
-  const updateFlavor = useUpdateFlavorInventory();
+  const createFlavor = useCreateFlavor();
+  const updateFlavor = useUpdateFlavor();
+  const deleteFlavor = useDeleteFlavor();
   const recordWaste = useRecordWaste();
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
+
+  const flavorPayload = (data: FormData) => ({
+    name: String(data.get("name")),
+    description: String(data.get("description")),
+    pricePerPortion: Number(data.get("pricePerPortion")),
+    availablePortions: Number(data.get("availablePortions")),
+    allergens: String(data.get("allergens")).split(","),
+    imageUrl: String(data.get("imageUrl")),
+    isAvailable: data.get("isAvailable") === "on"
+  });
+
+  const submitFlavor = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    createFlavor.mutate(flavorPayload(new FormData(form)), {
+      onSuccess: () => { toast.success("เพิ่มเมนูใหม่แล้ว"); form.reset(); setShowCreateMenu(false); },
+      onError: (error) => toast.error(error.message)
+    });
+  };
 
   const submitBatch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -50,10 +72,10 @@ export default function ManagerPage() {
               MANAGER ACCESS ONLY
             </div>
             <h1 className="text-3xl font-black uppercase tracking-tight text-[#32111c] sm:text-5xl">
-              BATCH & INVENTORY
+              MENU & INVENTORY
             </h1>
             <p className="mt-2 text-xs font-bold uppercase tracking-wider text-[#631c31]">
-              สร้าง Batch ปรับสต็อก จัดการสารก่อภูมิแพ้ และบันทึกของเสีย
+              เพิ่ม แก้ไข และลบเมนู พร้อมจัดการ Batch สต็อก และของเสีย
             </p>
           </div>
           <Button asChild variant="outline" className="relative z-10 border-black bg-white text-black hover:bg-stone-100">
@@ -66,12 +88,42 @@ export default function ManagerPage() {
           <Image
             src={strawberryHero}
             alt="Strawberry gelato"
+            width={176}
+            height={176}
             className="h-32 w-32 object-contain sm:h-44 sm:w-44"
           />
         </div>
       </div>
 
       <div className="mx-auto max-w-7xl px-6 pt-8">
+
+      <section className="border border-black bg-white p-6 sm:p-8" aria-labelledby="menu-management-heading">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#c14f76]">Catalog management</p>
+            <h2 id="menu-management-heading" className="mt-1 text-2xl font-black uppercase tracking-tight">Manage Gelato Menu</h2>
+            <p className="mt-1 text-xs text-black/55">เพิ่มเมนูใหม่ หรือแก้ไขราคา รายละเอียด รูปภาพ และสถานะการขาย</p>
+          </div>
+          <Button type="button" onClick={() => setShowCreateMenu((value) => !value)}>
+            <Plus className="h-4 w-4" /> {showCreateMenu ? "CANCEL" : "ADD NEW MENU"}
+          </Button>
+        </div>
+
+        {showCreateMenu && (
+          <form onSubmit={submitFlavor} className="mt-6 border border-black bg-[#fff3f7] p-5 sm:p-6">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="text-[10px] font-bold uppercase tracking-widest">Menu name<input name="name" required minLength={2} placeholder="Dark Chocolate" className={fieldClass} /></label>
+              <label className="text-[10px] font-bold uppercase tracking-widest">Price / scoop<input name="pricePerPortion" required type="number" min="1" step="1" placeholder="95" className={fieldClass} /></label>
+              <label className="text-[10px] font-bold uppercase tracking-widest">Starting stock<input name="availablePortions" required type="number" min="0" step="1" defaultValue="0" className={fieldClass} /></label>
+              <label className="text-[10px] font-bold uppercase tracking-widest">Image path<select name="imageUrl" defaultValue="/hero/1.png" className={fieldClass}>{[1, 2, 3, 4, 5, 6].map((number) => <option key={number} value={`/hero/${number}.png`}>/hero/{number}.png</option>)}</select></label>
+              <label className="text-[10px] font-bold uppercase tracking-widest sm:col-span-2">Description<input name="description" required placeholder="คำอธิบายรสชาติ" className={fieldClass} /></label>
+              <label className="text-[10px] font-bold uppercase tracking-widest">Allergens<input name="allergens" placeholder="Dairy, Nuts" className={fieldClass} /></label>
+              <label className="flex items-center gap-2 self-end pb-3 text-[10px] font-bold uppercase tracking-widest"><input name="isAvailable" type="checkbox" defaultChecked className="h-4 w-4 accent-black" /> Available for sale</label>
+            </div>
+            <Button type="submit" className="mt-5 w-full sm:w-auto" disabled={createFlavor.isPending}>{createFlavor.isPending && <Loader2 className="h-4 w-4 animate-spin" />} CREATE MENU ITEM</Button>
+          </form>
+        )}
+      </section>
 
       <section className="mt-8 grid gap-5 lg:grid-cols-3" aria-label="Catalog inventory">
         {inventory.data.flavors.map((flavor) => (
@@ -82,15 +134,25 @@ export default function ManagerPage() {
             </div>
             <form className="mt-5" onSubmit={(event) => {
               event.preventDefault(); const data = new FormData(event.currentTarget);
-              updateFlavor.mutate({ flavorId: flavor.id, availablePortions: Number(data.get("stock")), allergens: String(data.get("allergens")).split(",") }, {
+              updateFlavor.mutate({ flavorId: flavor.id, ...flavorPayload(data) }, {
                 onSuccess: () => toast.success(`อัปเดต ${flavor.name} แล้ว`), onError: (error) => toast.error(error.message)
               });
             }}>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Available portions</label>
-              <input name="stock" type="number" min="0" step="1" defaultValue={flavor.availablePortions} className="mt-2 h-10 w-full border border-white/20 bg-white/5 px-3 outline-none focus:border-[#f79bad]" />
-              <label className="mt-4 block text-[10px] font-bold uppercase tracking-widest text-white/50">Allergens · comma separated</label>
-              <input name="allergens" defaultValue={flavor.allergens.join(", ")} className="mt-2 h-10 w-full border border-white/20 bg-white/5 px-3 outline-none focus:border-[#f79bad]" />
-              <Button type="submit" className="mt-4 h-10 w-full" disabled={updateFlavor.isPending}><Save className="h-3.5 w-3.5" /> SAVE ITEM</Button>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Menu name<input name="name" required defaultValue={flavor.name} className="mt-1.5 h-10 w-full border border-white/20 bg-white/5 px-3 text-white outline-none focus:border-[#f79bad]" /></label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Price / scoop<input name="pricePerPortion" required type="number" min="1" defaultValue={flavor.pricePerPortion} className="mt-1.5 h-10 w-full border border-white/20 bg-white/5 px-3 text-white outline-none focus:border-[#f79bad]" /></label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 sm:col-span-2 lg:col-span-1 xl:col-span-2">Description<input name="description" required defaultValue={flavor.description} className="mt-1.5 h-10 w-full border border-white/20 bg-white/5 px-3 text-white outline-none focus:border-[#f79bad]" /></label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Available portions<input name="availablePortions" type="number" min="0" step="1" defaultValue={flavor.availablePortions} className="mt-1.5 h-10 w-full border border-white/20 bg-white/5 px-3 text-white outline-none focus:border-[#f79bad]" /></label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-white/50">Image path<select name="imageUrl" defaultValue={flavor.imageUrl} className="mt-1.5 h-10 w-full border border-white/20 bg-[#21171c] px-3 text-white outline-none focus:border-[#f79bad]">{![1, 2, 3, 4, 5, 6].some((number) => flavor.imageUrl === `/hero/${number}.png`) && <option value={flavor.imageUrl}>{flavor.imageUrl}</option>}{[1, 2, 3, 4, 5, 6].map((number) => <option key={number} value={`/hero/${number}.png`}>/hero/{number}.png</option>)}</select></label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-white/50 sm:col-span-2 lg:col-span-1 xl:col-span-2">Allergens · comma separated<input name="allergens" defaultValue={flavor.allergens.join(", ")} className="mt-1.5 h-10 w-full border border-white/20 bg-white/5 px-3 text-white outline-none focus:border-[#f79bad]" /></label>
+              </div>
+              <label className="mt-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/65"><input name="isAvailable" type="checkbox" defaultChecked={flavor.isAvailable} className="h-4 w-4 accent-[#f79bad]" /> Available for sale</label>
+              <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+                <Button type="submit" className="h-10" disabled={updateFlavor.isPending}><Save className="h-3.5 w-3.5" /> SAVE ITEM</Button>
+                <Button type="button" variant="outline" className="h-10 border-white/30 bg-transparent px-3 text-white hover:bg-red-500 hover:text-white" disabled={deleteFlavor.isPending} aria-label={`Delete ${flavor.name}`} onClick={() => {
+                  if (window.confirm(`ยืนยันลบเมนู ${flavor.name}? Batch และข้อมูล Waste ของเมนูนี้จะถูกลบด้วย`)) deleteFlavor.mutate(flavor.id, { onSuccess: () => toast.success(`ลบ ${flavor.name} แล้ว`), onError: (error) => toast.error(error.message) });
+                }}><Trash2 className="h-4 w-4" /></Button>
+              </div>
             </form>
           </Card>
         ))}

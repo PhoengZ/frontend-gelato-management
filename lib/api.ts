@@ -129,6 +129,14 @@ export function useLogin() {
   });
 }
 
+export function useSignup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; email: string; password: string }) => requestJson<AuthSession>("/api/v1/auth/signup", { method: "POST", body: JSON.stringify(input) }),
+    onSuccess: (session) => queryClient.setQueryData(["session"], session)
+  });
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -156,6 +164,32 @@ export function useUpdateFlavorInventory() {
     mutationFn: ({ flavorId, ...input }: { flavorId: string; availablePortions: number; allergens: string[] }) =>
       requestJson<Flavor>(`/api/v1/inventory/flavors/${encodeURIComponent(flavorId)}`, { method: "PATCH", body: JSON.stringify(input) }),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["inventory"] }); void queryClient.invalidateQueries({ queryKey: ["catalog"] }); }
+  });
+}
+
+type FlavorMutationInput = Pick<Flavor, "name" | "description" | "pricePerPortion" | "allergens" | "availablePortions" | "imageUrl"> & { isAvailable?: boolean };
+
+export function useCreateFlavor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: FlavorMutationInput) => requestJson<Flavor>("/api/v1/catalog/flavors", { method: "POST", body: JSON.stringify(input) }),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["inventory"] }); void queryClient.invalidateQueries({ queryKey: ["catalog"] }); }
+  });
+}
+
+export function useUpdateFlavor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ flavorId, ...input }: FlavorMutationInput & { flavorId: string }) => requestJson<Flavor>(`/api/v1/catalog/flavors/${encodeURIComponent(flavorId)}`, { method: "PATCH", body: JSON.stringify(input) }),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["inventory"] }); void queryClient.invalidateQueries({ queryKey: ["catalog"] }); void queryClient.invalidateQueries({ queryKey: ["analytics"] }); }
+  });
+}
+
+export function useDeleteFlavor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (flavorId: string) => requestJson<Flavor>(`/api/v1/catalog/flavors/${encodeURIComponent(flavorId)}`, { method: "DELETE" }),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["inventory"] }); void queryClient.invalidateQueries({ queryKey: ["catalog"] }); void queryClient.invalidateQueries({ queryKey: ["analytics"] }); }
   });
 }
 

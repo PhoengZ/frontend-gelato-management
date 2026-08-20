@@ -10,7 +10,7 @@ import logo from "@/public/logo.png";
 
 const baseItems = [{ href: "/staff", label: "Fulfillment", description: "Orders & queue", icon: ChefHat }];
 const managerItems = [
-  { href: "/manager", label: "Inventory", description: "Batches & catalog", icon: Boxes },
+  { href: "/manager", label: "Menu & Inventory", description: "Catalog & batches", icon: Boxes },
   { href: "/analytics", label: "Analytics", description: "Sales & waste", icon: BarChart3 }
 ];
 

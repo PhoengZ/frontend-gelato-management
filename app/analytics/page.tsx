@@ -2,12 +2,45 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, BarChart3, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, BarChart3, Loader2, RefreshCw, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAnalytics } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
 import pistachioHero from "@/public/hero/1.png";
+
+function SalesTrendChart({ trend }: { trend: Array<{ date: string; label: string; revenue: number; orders: number }> }) {
+  const width = 720;
+  const height = 250;
+  const padding = { left: 42, right: 20, top: 22, bottom: 42 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxRevenue = Math.max(1, ...trend.map((item) => item.revenue));
+  const x = (index: number) => padding.left + (chartWidth * index) / Math.max(1, trend.length - 1);
+  const y = (revenue: number) => padding.top + chartHeight - (revenue / maxRevenue) * chartHeight;
+  const points = trend.map((item, index) => `${x(index)},${y(item.revenue)}`).join(" ");
+  const areaPoints = `${padding.left},${padding.top + chartHeight} ${points} ${padding.left + chartWidth},${padding.top + chartHeight}`;
+
+  return (
+    <div className="mt-6 overflow-x-auto" role="img" aria-label="กราฟรายได้ย้อนหลัง 7 วัน">
+      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[620px]" aria-hidden="true">
+        <defs><linearGradient id="sales-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#f79bad" stopOpacity="0.55" /><stop offset="1" stopColor="#f79bad" stopOpacity="0.04" /></linearGradient></defs>
+        {[0, 0.5, 1].map((ratio) => {
+          const gridY = padding.top + chartHeight * ratio;
+          return <g key={ratio}><line x1={padding.left} x2={padding.left + chartWidth} y1={gridY} y2={gridY} stroke="rgba(0,0,0,.12)" strokeDasharray="4 5" /><text x={padding.left - 8} y={gridY + 4} textAnchor="end" fontSize="9" fill="rgba(0,0,0,.5)">{Math.round(maxRevenue * (1 - ratio))}</text></g>;
+        })}
+        <polygon points={areaPoints} fill="url(#sales-area)" />
+        <polyline points={points} fill="none" stroke="#171717" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+        {trend.map((item, index) => (
+          <g key={item.date}>
+            <circle cx={x(index)} cy={y(item.revenue)} r="5" fill="#f79bad" stroke="#171717" strokeWidth="2"><title>{item.label}: {formatPrice(item.revenue)} · {item.orders} orders</title></circle>
+            <text x={x(index)} y={height - 14} textAnchor="middle" fontSize="10" fontWeight="700" fill="rgba(0,0,0,.65)">{item.label}</text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
 
 export default function AnalyticsPage() {
   const analytics = useAnalytics();
@@ -19,6 +52,9 @@ export default function AnalyticsPage() {
   const metrics = [
     ["Gross sales", formatPrice(data.totalRevenue)], ["Orders", String(data.totalOrders)], ["Scoops sold", String(data.totalScoops)], ["Waste portions", String(data.totalWaste)]
   ];
+  const averageOrder = data.totalOrders ? data.totalRevenue / data.totalOrders : 0;
+  const averageScoops = data.totalOrders ? data.totalScoops / data.totalOrders : 0;
+  const wasteRate = data.totalScoops + data.totalWaste ? (data.totalWaste / (data.totalScoops + data.totalWaste)) * 100 : 0;
 
   return (
     <main className="w-full pb-24">
@@ -55,6 +91,8 @@ export default function AnalyticsPage() {
           <Image
             src={pistachioHero}
             alt="Pistachio gelato"
+            width={176}
+            height={176}
             className="h-32 w-32 object-contain sm:h-44 sm:w-44"
           />
         </div>
@@ -68,6 +106,27 @@ export default function AnalyticsPage() {
               <p className="mt-3 font-mono text-3xl font-bold">{value}</p>
             </Card>
           ))}
+        </section>
+
+        <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
+          <Card className="border border-black bg-white p-6 shadow-none sm:p-8">
+            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
+              <div className="flex items-center gap-3"><TrendingUp className="h-5 w-5 text-[#c14f76]" /><div><h2 className="text-lg font-bold uppercase tracking-wide">7-day revenue trend</h2><p className="mt-1 text-xs text-black/45">รายได้รวมรายวัน · บาท</p></div></div>
+              <span className="border border-black bg-[#fff3f7] px-3 py-1.5 font-mono text-xs font-bold">{formatPrice(data.salesTrend.reduce((sum, day) => sum + day.revenue, 0))}</span>
+            </div>
+            <SalesTrendChart trend={data.salesTrend} />
+          </Card>
+
+          <Card className="border border-black bg-[#21171c] p-6 text-white shadow-none sm:p-8">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#f79bad]">Performance statistics</p>
+            <h2 className="mt-2 text-lg font-bold uppercase tracking-wide">Store efficiency</h2>
+            <dl className="mt-6 divide-y divide-white/15">
+              <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Avg. order value</dt><dd className="font-mono text-xl font-bold">{formatPrice(averageOrder)}</dd></div>
+              <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Scoops / order</dt><dd className="font-mono text-xl font-bold">{averageScoops.toFixed(1)}</dd></div>
+              <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Waste rate</dt><dd className="font-mono text-xl font-bold text-[#f79bad]">{wasteRate.toFixed(1)}%</dd></div>
+              <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Active sales days</dt><dd className="font-mono text-xl font-bold">{data.salesTrend.filter((day) => day.orders > 0).length} / 7</dd></div>
+            </dl>
+          </Card>
         </section>
 
         <section className="mt-8 grid gap-8 lg:grid-cols-2">
@@ -116,4 +175,3 @@ export default function AnalyticsPage() {
     </main>
   );
 }
-
