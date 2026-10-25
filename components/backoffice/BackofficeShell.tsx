@@ -19,7 +19,7 @@ export function BackofficeShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const session = useSession();
   const logout = useLogout();
-  const user = session.data?.user;
+  const user = session.data;
   const items = user?.role === "MANAGER" ? [...baseItems, ...managerItems] : baseItems;
 
   const logoutNow = () => logout.mutate(undefined, { onSuccess: () => { router.push("/login"); router.refresh(); } });
@@ -64,7 +64,7 @@ export function BackofficeShell({ children }: { children: React.ReactNode }) {
 
         <div className="border-t border-black/10 p-4">
           <div className="px-2 pb-3">
-            <p className="truncate text-xs font-bold text-black">{user?.name ?? "Loading account..."}</p>
+            <p className="truncate text-xs font-bold text-black">{user?.display_name ?? "Loading account..."}</p>
             <p className="mt-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-black/50">{user?.role ?? "SECURE SESSION"}</p>
           </div>
           <button

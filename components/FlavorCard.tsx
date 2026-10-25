@@ -4,9 +4,9 @@ import Image from "next/image";
 import { Minus, Plus, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatPrice } from "@/lib/utils";
+import { allergenLabels, formatMinor } from "@/lib/utils";
 import { useCartStore } from "@/store/useCartStore";
-import type { Flavor } from "@/types";
+import type { MenuFlavor } from "@/types";
 import bestSellerBadge from "@/public/best-seller.png";
 import franceFlag from "@/public/origins/france.png";
 import italyFlag from "@/public/origins/italy.png";
@@ -18,25 +18,33 @@ const mockOrigins: Record<string, { country: string; flag: typeof italyFlag }> =
   vanilla: { country: "Madagascar", flag: madagascarFlag },
 };
 
-export function FlavorCard({ flavor }: { flavor: Flavor }) {
+const FALLBACK_IMAGE = "/hero/3.png";
+
+function originFor(name: string) {
+  const key = Object.keys(mockOrigins).find((flavor) => name.toLowerCase().includes(flavor));
+  return key ? mockOrigins[key] : { country: "Italy", flag: italyFlag };
+}
+
+export function FlavorCard({ flavor }: { flavor: MenuFlavor }) {
   const item = useCartStore((state) => state.items.find((entry) => entry.flavorId === flavor.id));
   const addItem = useCartStore((state) => state.addItem);
   const updatePortion = useCartStore((state) => state.updatePortion);
-  const unavailable = !flavor.isAvailable || flavor.availablePortions === 0;
-  const atLimit = (item?.portions ?? 0) >= flavor.availablePortions;
-  const origin = mockOrigins[flavor.id] ?? { country: "Italy", flag: italyFlag };
+  const unavailable = !flavor.active || flavor.available_portions === 0;
+  const atLimit = (item?.portions ?? 0) >= flavor.available_portions;
+  const origin = originFor(flavor.name);
 
   return (
     <article className="group h-full">
       <Card className="h-full rounded-none border border-[#4f313c] bg-[#21171c] text-[#fff7ed] shadow-none">
         <div className="relative aspect-square overflow-hidden bg-[#f5a6b7] border-b border-[#4f313c]">
           <Image
-            src={flavor.imageUrl}
+            src={flavor.image_url ?? FALLBACK_IMAGE}
             alt={`เจลาโตรส ${flavor.name}`}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             className={`object-contain ${unavailable ? "grayscale opacity-60" : ""}`}
-            priority={flavor.id === "pistachio"}
+            // Catalog stores absolute image URLs on any host, so they bypass the optimizer.
+            unoptimized={Boolean(flavor.image_url)}
           />
           <Image
             src={bestSellerBadge}
@@ -50,7 +58,7 @@ export function FlavorCard({ flavor }: { flavor: Flavor }) {
         <CardContent className="flex flex-col p-5">
           <div className="flex items-baseline justify-between gap-3">
             <h2 className="text-xl font-semibold uppercase tracking-[0.04em] text-[#fff7ed]">{flavor.name}</h2>
-            <p className="shrink-0 font-mono text-base font-bold text-[#fff7ed]">{formatPrice(flavor.pricePerPortion)}</p>
+            <p className="shrink-0 font-mono text-base font-bold text-[#fff7ed]">{formatMinor(flavor.price.amount_minor)}</p>
           </div>
 
           <p className="mt-2 h-10 overflow-hidden text-xs leading-5 text-[#fff7ed]/65">{flavor.description}</p>
@@ -64,10 +72,10 @@ export function FlavorCard({ flavor }: { flavor: Flavor }) {
               >
                 <Image src={origin.flag} alt="" fill sizes="20px" className="object-cover" />
               </span>
-              {origin.country} · Stock {flavor.availablePortions}
+              {origin.country} · Stock {flavor.available_portions}
             </span>
             <span className="text-right">
-              {flavor.allergens.length ? `Contains · ${flavor.allergens.join(" · ")}` : "Allergen free"}
+              {flavor.allergens.length ? `Contains · ${flavor.allergens.map((allergen) => allergenLabels[allergen]).join(" · ")}` : "Allergen free"}
             </span>
           </div>
 

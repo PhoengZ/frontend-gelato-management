@@ -1,46 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell, BellRing, ChevronRight, Volume2, VolumeX, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useSession } from "@/lib/api";
+import { formatDateTime } from "@/lib/utils";
+import { useNotificationStore } from "@/store/useNotificationStore";
+import type { AppNotification, NotificationType } from "@/types";
 
-export interface MockNotification {
-  id: string;
-  orderId: string;
-  queueNumber: string;
-  title: string;
-  message: string;
-  timestamp: string;
-  isRead: boolean;
-  type: "READY" | "PREPARING" | "PROMO";
-}
+const NOTIFICATION_TYPES: NotificationType[] = ["order.confirmed", "order.ready", "order.cancelled"];
+const RECONNECT_DELAY_MS = 15_000;
 
-const INITIAL_MOCK_NOTIFS: MockNotification[] = [
-  {
-    id: "notif-1",
-    orderId: "o-mock-1",
-    queueNumber: "A-012",
-    title: "🎉 คิวของคุณถึงแล้ว!",
-    message: "ไอศกรีมเจลาโต้ คิว #A-012 พร้อมรับแล้วที่เคาน์เตอร์ครับ",
-    timestamp: "เมื่อสักครู่",
-    isRead: false,
-    type: "READY"
-  },
-  {
-    id: "notif-2",
-    orderId: "o-mock-2",
-    queueNumber: "A-011",
-    title: "👨‍🍳 กำลังเตรียมเจลาโต้",
-    message: "เชฟกำลังตั้งใจตัก Gelato สดใหม่สำหรับ คิว #A-011",
-    timestamp: "10 นาทีที่แล้ว",
-    isRead: true,
-    type: "PREPARING"
-  }
-];
+const titles: Record<NotificationType, string> = {
+  "order.confirmed": "✅ ยืนยันคำสั่งซื้อแล้ว",
+  "order.ready": "🎉 คิวของคุณถึงแล้ว!",
+  "order.cancelled": "คำสั่งซื้อถูกยกเลิก",
+  "inventory.low_stock": "สต็อกใกล้หมด",
+  "inventory.expiring": "Batch ใกล้หมดอายุ"
+};
 
 function playNotificationSound() {
   try {
@@ -64,68 +44,93 @@ function playNotificationSound() {
   }
 }
 
-export function CustomerNotification() {
-  const session = useSession();
-  const user = session.data?.user;
-  const [notifications, setNotifications] = useState<MockNotification[]>(INITIAL_MOCK_NOTIFS);
-  const [soundMuted, setSoundMuted] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
+function showToast(notification: AppNotification) {
+  const orderId = notification.data.order_id;
+  toast.custom((id) => (
+    <div className="flex w-full items-start gap-3 rounded-none border border-black bg-white p-4 shadow-2xl">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-black bg-black text-white">
+        <BellRing className="h-5 w-5 animate-bounce text-white" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-black uppercase tracking-wider text-black">{titles[notification.type]}</p>
+        <p className="mt-1 text-xs text-black/80">{notification.message}</p>
+        {orderId && (
+          <Link
+            href={`/queue/${orderId}`}
+            className="mt-2 inline-block text-[11px] font-bold uppercase tracking-wider text-black underline underline-offset-4 hover:opacity-70"
+            onClick={() => toast.dismiss(id)}
+          >
+            {notification.data.queue_number ? `ดูตั๋วคิว #${notification.data.queue_number}` : "ดูคำสั่งซื้อ"}
+          </Link>
+        )}
+      </div>
+      <button onClick={() => toast.dismiss(id)} className="text-black/40 hover:text-black" aria-label="ปิดแจ้งเตือน">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  ), { duration: 6000 });
+}
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+/**
+ * Subscribes to the Notification Service SSE stream through the same-origin proxy, which
+ * turns the session cookie into a Bearer token. Delivery is best effort and not replayed,
+ * so order pages keep polling Order as the source of truth.
+ */
+function useNotificationStream(enabled: boolean, soundMuted: boolean) {
+  const add = useNotificationStore((state) => state.add);
+  const muted = useRef(soundMuted);
 
-  const handleSimulateReady = () => {
-    const nextQueueNum = `A-${Math.floor(Math.random() * 899 + 100)}`;
-    const newNotif: MockNotification = {
-      id: `notif-${Date.now()}`,
-      orderId: `o-sim-${Date.now()}`,
-      queueNumber: nextQueueNum,
-      title: "🎉 คิวของคุณถึงแล้ว!",
-      message: `ไอศกรีมเจลาโต้ คิว #${nextQueueNum} พร้อมรับที่เคาน์เตอร์แล้ว!`,
-      timestamp: "เมื่อสักครู่",
-      isRead: false,
-      type: "READY"
+  useEffect(() => {
+    muted.current = soundMuted;
+  }, [soundMuted]);
+
+  useEffect(() => {
+    if (!enabled || typeof EventSource === "undefined") return;
+    let source: EventSource | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+
+    const onNotification = (event: MessageEvent<string>) => {
+      try {
+        const notification = JSON.parse(event.data) as AppNotification;
+        if (!add(notification)) return;
+        if (!muted.current) playNotificationSound();
+        showToast(notification);
+      } catch {
+        // Ignore malformed frames.
+      }
     };
 
-    setNotifications((prev) => [newNotif, ...prev]);
+    const connect = () => {
+      source = new EventSource("/api/v1/notifications/stream");
+      for (const type of NOTIFICATION_TYPES) source.addEventListener(type, onNotification as EventListener);
+      source.onerror = () => {
+        // The browser retries dropped connections itself; a rejected one (e.g. 401) is closed.
+        if (source?.readyState === EventSource.CLOSED) retry = setTimeout(connect, RECONNECT_DELAY_MS);
+      };
+    };
 
-    if (!soundMuted) {
-      playNotificationSound();
-    }
+    connect();
+    return () => {
+      clearTimeout(retry);
+      source?.close();
+    };
+  }, [enabled, add]);
+}
 
-    toast.custom((id) => (
-      <div className="flex w-full items-start gap-3 rounded-none border border-black bg-white p-4 shadow-2xl">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-black bg-black text-white">
-          <BellRing className="h-5 w-5 animate-bounce text-white" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-black uppercase tracking-wider text-black">{newNotif.title}</p>
-          <p className="mt-1 text-xs text-black/80">{newNotif.message}</p>
-          <div className="mt-2 flex items-center gap-2">
-            <Link
-              href={`/queue/${newNotif.orderId}`}
-              className="text-[11px] font-bold uppercase tracking-wider text-black underline underline-offset-4 hover:opacity-70"
-              onClick={() => toast.dismiss(id)}
-            >
-              ดูตั๋วคิว #{newNotif.queueNumber}
-            </Link>
-          </div>
-        </div>
-        <button
-          onClick={() => toast.dismiss(id)}
-          className="text-black/40 hover:text-black"
-          aria-label="ปิดแจ้งเตือน"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-    ), { duration: 6000 });
-  };
+export function CustomerNotification() {
+  const session = useSession();
+  const user = session.data;
+  const notifications = useNotificationStore((state) => state.notifications);
+  const markAllRead = useNotificationStore((state) => state.markAllRead);
+  const [soundMuted, setSoundMuted] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const isCustomer = user?.role === "CUSTOMER";
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-  };
+  useNotificationStream(isCustomer, soundMuted);
 
-  if (!user || user.role !== "CUSTOMER") return null;
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  if (!isCustomer) return null;
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -163,7 +168,7 @@ export function CustomerNotification() {
                   variant="ghost"
                   size="sm"
                   className="h-8 text-[10px] font-bold uppercase tracking-wider"
-                  onClick={markAllAsRead}
+                  onClick={markAllRead}
                 >
                   MARK ALL READ
                 </Button>
@@ -172,22 +177,7 @@ export function CustomerNotification() {
           </div>
         </SheetHeader>
 
-        <div className="mt-4 flex items-center justify-between border border-black/10 bg-stone-50 p-3">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-black">ทดสอบจำลองคิวเรียก</p>
-            <p className="text-[10px] text-black/60">กดปุ่มเพื่อทดสอบระบบการแจ้งเตือนคิวถึงแล้ว</p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 border-black text-[10px] font-bold uppercase tracking-wider"
-            onClick={handleSimulateReady}
-          >
-            TEST QUEUE CALL
-          </Button>
-        </div>
-
-        <div className="mt-4 space-y-3 overflow-y-auto max-h-[calc(100vh-14rem)]">
+        <div className="mt-4 space-y-3 overflow-y-auto max-h-[calc(100vh-10rem)]">
           {notifications.length === 0 ? (
             <div className="py-12 text-center text-xs uppercase tracking-widest text-black/40">
               ไม่มีรายการแจ้งเตือน
@@ -197,29 +187,31 @@ export function CustomerNotification() {
               <div
                 key={notif.id}
                 className={`relative border p-4 transition-all ${
-                  notif.isRead ? "border-black/10 bg-white opacity-70" : "border-black bg-stone-50"
+                  notif.read ? "border-black/10 bg-white opacity-70" : "border-black bg-stone-50"
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-black uppercase text-black">
-                      คิว #{notif.queueNumber}
-                    </span>
-                    {!notif.isRead && (
+                    {notif.data.queue_number && (
+                      <span className="font-mono text-xs font-black uppercase text-black">
+                        คิว #{notif.data.queue_number}
+                      </span>
+                    )}
+                    {!notif.read && (
                       <span className="h-2 w-2 rounded-full bg-black" />
                     )}
                   </div>
-                  <span className="text-[10px] font-mono text-black/50">{notif.timestamp}</span>
+                  <span className="text-[10px] font-mono text-black/50">{formatDateTime(notif.occurred_at)}</span>
                 </div>
-                <p className="mt-1.5 text-xs font-bold text-black">{notif.title}</p>
+                <p className="mt-1.5 text-xs font-bold text-black">{titles[notif.type]}</p>
                 <p className="mt-0.5 text-xs text-black/70">{notif.message}</p>
-                {notif.type === "READY" && (
+                {notif.data.order_id && (
                   <Link
-                    href={`/queue/${notif.orderId}`}
+                    href={`/queue/${notif.data.order_id}`}
                     onClick={() => setIsOpen(false)}
                     className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-black hover:underline"
                   >
-                    ดูสถานะคิวรับสินค้า <ChevronRight className="h-3 w-3" />
+                    ดูสถานะคำสั่งซื้อ <ChevronRight className="h-3 w-3" />
                   </Link>
                 )}
               </div>

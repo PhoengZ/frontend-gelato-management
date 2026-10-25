@@ -4,24 +4,15 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CreditCard, Loader2, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { ArrowLeft, Clock3, CreditCard, Loader2, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiClientError, useCatalog, useCreateOrder, useSession } from "@/lib/api";
-import { formatPrice } from "@/lib/utils";
+import { formatMinor, formatTime, pickupSlots } from "@/lib/utils";
 import { useCartStore } from "@/store/useCartStore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { loadStripe } from "@stripe/stripe-js";
-import { Elements } from "@stripe/react-stripe-js";
-import { StripeCheckoutForm } from "@/components/StripeCheckoutForm";
-
-const stripePromise = loadStripe(
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
-    "pk_test_51U5QoBK6FQZueCtVt7lbdtxVV0KCu2tVAusxQm8N8BaPlyLCfmMFwaLDgBWis7k93TE56f0Aa1zfw28YxyflKrDz00bW1IGEjt"
-);
 import vanillaGelato from "@/public/hero/3.png";
-import promptpayQr from "@/public/promptpay.png";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +22,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
+
+const stockConflictCodes = ["DEPENDENCY_CONFLICT", "FLAVOR_INACTIVE", "INSUFFICIENT_STOCK"];
 
 function CartPromoBanner() {
   return (
@@ -55,24 +48,26 @@ export default function CartPage() {
   const items = useCartStore((state) => state.items);
   const updatePortion = useCartStore((state) => state.updatePortion);
   const removeItem = useCartStore((state) => state.removeItem);
-  const clearCart = useCartStore((state) => state.clearCart);
   const beginCheckout = useCartStore((state) => state.beginCheckout);
+  const attachOrder = useCartStore((state) => state.attachOrder);
+  const pendingCheckout = useCartStore((state) => state.checkout);
   const catalog = useCatalog();
   const createOrder = useCreateOrder();
   const session = useSession();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [paymentMode, setPaymentMode] = useState<"STRIPE" | "PROMPTPAY">("STRIPE");
-  const total = items.reduce((sum, item) => sum + item.portions * item.unitPrice, 0);
+  const [slots, setSlots] = useState<string[]>([]);
+  const [pickupAt, setPickupAt] = useState("");
+  const [redirecting, setRedirecting] = useState(false);
+  const total = items.reduce((sum, item) => sum + item.portions * item.unitPriceMinor, 0);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  const openCheckout = async () => {
+  const openCheckout = () => {
     if (session.isLoading) return;
-    if (session.data?.user.role !== "CUSTOMER") {
+    if (session.data?.role !== "CUSTOMER") {
       if (session.isError && session.error instanceof ApiClientError && session.error.status !== 401) {
         toast.error("ตรวจสอบบัญชีไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
         return;
@@ -81,38 +76,30 @@ export default function CartPage() {
       router.push("/login?next=/cart");
       return;
     }
-    beginCheckout();
+    const nextSlots = pickupSlots();
+    // Keep a still-valid pickup time from an earlier attempt so a retry replays the same order.
+    const previous = pendingCheckout?.order.pickup_at;
+    const keepPrevious = previous && new Date(previous).getTime() > Date.now();
+    setSlots(keepPrevious && !nextSlots.includes(previous) ? [previous, ...nextSlots] : nextSlots);
+    setPickupAt(keepPrevious ? previous : nextSlots[0]);
     setCheckoutOpen(true);
-
-    try {
-      const res = await fetch("/api/v1/stripe/create-payment-intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: total })
-      });
-      const data = await res.json();
-      if (data.clientSecret) {
-        setClientSecret(data.clientSecret);
-      }
-    } catch {
-      // Fallback
-    }
   };
 
   const pay = () => {
-    if (!items.length || createOrder.isPending) return;
-    const idempotencyKey = beginCheckout();
+    if (!items.length || !pickupAt || createOrder.isPending) return;
+    const checkout = beginCheckout(pickupAt);
     createOrder.mutate(
-      {
-        items: items.map((item) => ({ flavorId: item.flavorId, portions: item.portions })),
-        paymentMethod: "PROMPTPAY_MOCK",
-        idempotencyKey
-      },
+      { order: checkout.order, idempotencyKey: checkout.idempotencyKey },
       {
         onSuccess: (order) => {
-          clearCart();
-          toast.success("ชำระเงินสำเร็จ รับหมายเลขคิวแล้ว");
-          router.push(`/queue/${order.orderId}`);
+          attachOrder(order.order_id);
+          if (order.checkout_url) {
+            setRedirecting(true);
+            window.location.assign(order.checkout_url);
+            return;
+          }
+          // A replay of an order that is no longer payable returns its state without a URL.
+          router.push(`/queue/${order.order_id}`);
         },
         onError: (error) => {
           if (error instanceof ApiClientError && error.status === 401) {
@@ -120,17 +107,17 @@ export default function CartPage() {
             router.push("/login?next=/cart");
             return;
           }
-          if (error instanceof ApiClientError && (error.status === 400 || error.code === "OUT_OF_STOCK")) {
+          if (error instanceof ApiClientError && stockConflictCodes.includes(error.code)) {
             setCheckoutOpen(false);
             setStockError(error.message);
             void catalog.refetch();
             return;
           }
-          if (error instanceof ApiClientError && error.status === 409) {
-            toast.error(error.message, { description: "ระบบยังเก็บรหัสรายการเดิมไว้เพื่อให้ลองซ้ำได้อย่างปลอดภัย" });
+          if (error instanceof ApiClientError && error.status >= 502) {
+            toast.error(error.message, { description: "ระบบเก็บคำสั่งซื้อเดิมไว้แล้ว กดชำระเงินอีกครั้งได้อย่างปลอดภัย" });
             return;
           }
-          toast.error(error instanceof Error ? error.message : "ชำระเงินไม่สำเร็จ");
+          toast.error(error instanceof Error ? error.message : "สร้างคำสั่งซื้อไม่สำเร็จ");
         }
       }
     );
@@ -171,12 +158,12 @@ export default function CartPage() {
       <div className="mt-8 space-y-4">
         {items.map((item) => {
           const flavor = catalog.data?.find((entry) => entry.id === item.flavorId);
-          const atLimit = flavor ? item.portions >= flavor.availablePortions : false;
+          const atLimit = flavor ? item.portions >= flavor.available_portions : false;
           return (
             <Card key={item.flavorId} className="flex items-center gap-6 border border-black/10 bg-white p-5 transition-all hover:border-black">
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-base font-bold uppercase tracking-wide text-black">{item.flavorName}</h2>
-                <p className="mt-0.5 font-mono text-xs font-medium text-black/60">{formatPrice(item.unitPrice)} / SCOOP</p>
+                <p className="mt-0.5 font-mono text-xs font-medium text-black/60">{formatMinor(item.unitPriceMinor)} / SCOOP</p>
               </div>
               <div className="flex items-center border border-black/20 bg-white p-1">
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updatePortion(item.flavorId, item.portions - 1)} aria-label={`ลดจำนวน ${item.flavorName}`}>
@@ -187,7 +174,7 @@ export default function CartPage() {
                   <Plus className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <div className="w-24 text-right font-mono text-base font-bold text-black">{formatPrice(item.unitPrice * item.portions)}</div>
+              <div className="w-24 text-right font-mono text-base font-bold text-black">{formatMinor(item.unitPriceMinor * item.portions)}</div>
               <Button variant="ghost" size="icon" className="text-black/40" onClick={() => removeItem(item.flavorId)} aria-label={`ลบ ${item.flavorName}`}>
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -203,7 +190,7 @@ export default function CartPage() {
         </div>
         <div className="mt-3 flex items-end justify-between border-t border-white/20 pt-4">
           <span className="text-sm uppercase tracking-widest font-bold">TOTAL AMOUNT</span>
-          <span className="font-mono text-3xl font-bold">{formatPrice(total)}</span>
+          <span className="font-mono text-3xl font-bold">{formatMinor(total)}</span>
         </div>
         <Button size="lg" className="mt-8 h-14 w-full" onClick={openCheckout} disabled={session.isLoading}>
           {session.isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
@@ -216,68 +203,33 @@ export default function CartPage() {
           <SheetHeader className="text-left border-b border-black/10 pb-4">
             <SheetTitle className="text-xl font-bold uppercase tracking-wider text-black">CHECKOUT & PAYMENT</SheetTitle>
             <SheetDescription className="text-xs uppercase tracking-widest text-black/60">
-              STRIPE INTEGRATED GATEWAY — CARD / PROMPTPAY
+              STRIPE CHECKOUT — PROMPTPAY
             </SheetDescription>
           </SheetHeader>
 
-          {/* Payment Method Tabs */}
-          <div className="mt-6 flex border border-black p-1 bg-stone-100">
-            <button
-              type="button"
-              onClick={() => setPaymentMode("STRIPE")}
-              className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
-                paymentMode === "STRIPE" ? "bg-black text-white" : "text-black hover:bg-stone-200"
-              }`}
+          <label className="mt-6 block text-[10px] font-bold uppercase tracking-widest text-black/70">
+            <span className="flex items-center gap-2"><Clock3 className="h-3.5 w-3.5" /> PICKUP TIME</span>
+            <select
+              value={pickupAt}
+              onChange={(event) => setPickupAt(event.target.value)}
+              disabled={createOrder.isPending || redirecting}
+              className="mt-2 h-11 w-full border border-black/20 bg-white px-3 font-mono text-sm text-black outline-none focus:border-black"
             >
-              STRIPE CARD / PAY
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaymentMode("PROMPTPAY")}
-              className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
-                paymentMode === "PROMPTPAY" ? "bg-black text-white" : "text-black hover:bg-stone-200"
-              }`}
-            >
-              PROMPTPAY MOCK
-            </button>
-          </div>
+              {slots.map((slot) => <option key={slot} value={slot}>{formatTime(slot)} น.</option>)}
+            </select>
+          </label>
 
           <div className="mt-4 flex items-center justify-between border border-black/10 bg-stone-50 p-4">
-            <span className="text-xs font-bold uppercase tracking-wider text-black/70">TOTAL AMOUNT</span>
-            <span className="font-mono text-2xl font-black text-black">{formatPrice(total)}</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-black/70">ESTIMATED TOTAL</span>
+            <span className="font-mono text-2xl font-black text-black">{formatMinor(total)}</span>
           </div>
+          <p className="mt-2 text-[10px] text-black/50">ราคาสุดท้ายคำนวณโดยระบบ Order จากราคาเมนูล่าสุด และจองสต็อกไว้ระหว่างชำระเงิน</p>
 
-          {paymentMode === "STRIPE" ? (
-            clientSecret ? (
-              <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "flat" } }}>
-                <StripeCheckoutForm
-                  totalAmount={total}
-                  onSuccess={pay}
-                  isProcessing={createOrder.isPending}
-                />
-              </Elements>
-            ) : (
-              <div className="py-12 text-center text-xs font-bold uppercase tracking-widest text-black/60">
-                <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-black" />
-                LOADING STRIPE PAYMENT GATEWAY...
-              </div>
-            )
-          ) : (
-            <>
-              <div className="mt-6 border border-black bg-white p-6 text-center">
-                <div className="mx-auto relative w-full max-w-[240px] aspect-square overflow-hidden border border-black p-2 bg-white shadow-md">
-                  <Image
-                    src={promptpayQr}
-                    alt="PromptPay QR Code"
-                    className="h-full w-full object-contain"
-                  />
-                </div>
-              </div>
-              <Button size="lg" className="mt-6 h-14 w-full text-xs font-bold uppercase tracking-wider" onClick={pay} disabled={createOrder.isPending}>
-                {createOrder.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> PROCESSING ORDER...</> : <><CreditCard className="mr-2 h-4 w-4" /> CONFIRM PAYMENT</>}
-              </Button>
-            </>
-          )}
+          <Button size="lg" className="mt-6 h-14 w-full text-xs font-bold uppercase tracking-wider" onClick={pay} disabled={!pickupAt || createOrder.isPending || redirecting}>
+            {createOrder.isPending || redirecting
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {redirecting ? "REDIRECTING TO STRIPE..." : "RESERVING YOUR SCOOPS..."}</>
+              : <><CreditCard className="mr-2 h-4 w-4" /> PAY WITH STRIPE</>}
+          </Button>
 
           <p className="mt-6 text-center text-[10px] uppercase tracking-widest text-black/50">SECURED BY STRIPE & IDEMPOTENCY PROTECTION</p>
         </SheetContent>

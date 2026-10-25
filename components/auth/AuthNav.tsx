@@ -11,7 +11,7 @@ export function AuthNav() {
   const router = useRouter();
   const session = useSession();
   const logout = useLogout();
-  const user = session.data?.user;
+  const user = session.data;
 
   if (!user) return (
     <>
@@ -37,7 +37,7 @@ export function AuthNav() {
         className={cn("px-3", logout.isPending && "opacity-50")}
         onClick={() => logout.mutate(undefined, { onSuccess: () => { router.push("/"); router.refresh(); } })}
         disabled={logout.isPending}
-        aria-label={`Logout ${user.name}`}
+        aria-label={`Logout ${user.display_name}`}
       >
         <span className="hidden sm:inline">{user.role}</span><LogOut className="h-3.5 w-3.5" />
       </Button>
