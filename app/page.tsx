@@ -8,7 +8,7 @@ import { FlavorCard } from "@/components/FlavorCard";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCatalog } from "@/lib/api";
-import { cn, formatPrice } from "@/lib/utils";
+import { cn, formatMinor } from "@/lib/utils";
 import pistachioHero from "@/public/hero/1.png";
 import strawberryHero from "@/public/hero/2.png";
 import vanillaHero from "@/public/hero/3.png";
@@ -20,7 +20,7 @@ export default function MenuPage() {
   const catalog = useCatalog();
   const items = useCartStore((state) => state.items);
   const itemCount = items.reduce((total, item) => total + item.portions, 0);
-  const total = items.reduce((sum, item) => sum + item.portions * item.unitPrice, 0);
+  const total = items.reduce((sum, item) => sum + item.portions * item.unitPriceMinor, 0);
 
   return (
     <main>
@@ -104,7 +104,7 @@ export default function MenuPage() {
                   MY BAG · {itemCount} ITEMS
                 </span>
                 <span className="flex items-center gap-3 font-mono text-sm font-bold">
-                  {formatPrice(total)} 
+                  {formatMinor(total)}
                   <ArrowRight className="h-4 w-4" />
                 </span>
               </Link>

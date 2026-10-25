@@ -36,18 +36,16 @@ function GoogleIcon() {
 export default function LoginPage() {
   const router = useRouter();
   const login = useLogin();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    // Default mapping for demo login matching system credentials if needed
-    const emailToUse = username.includes("@") ? username : `${username}@gelatte.test`;
-    login.mutate({ email: emailToUse, password }, {
+    login.mutate({ email, password }, {
       onSuccess: (session) => {
         const requested = new URLSearchParams(window.location.search).get("next");
         const fallback = session.user.role === "MANAGER" ? "/manager" : session.user.role === "STAFF" ? "/staff" : "/";
-        router.replace(requested?.startsWith("/") ? requested : fallback);
+        router.replace(requested?.startsWith("/") && !requested.startsWith("//") ? requested : fallback);
         router.refresh();
       }
     });
@@ -99,13 +97,14 @@ export default function LoginPage() {
           <form onSubmit={submit} className="space-y-3">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-[0.18em] text-black/70">
-                Username / Email
+                Email
               </label>
               <input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                type="text"
-                placeholder="customer"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
                 required
                 className="mt-1 h-10 w-full border border-black/20 bg-stone-50 px-3.5 text-sm text-black outline-none focus:border-black"
               />
@@ -118,6 +117,8 @@ export default function LoginPage() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 type="password"
+                autoComplete="current-password"
+                maxLength={72}
                 placeholder="••••••••"
                 required
                 className="mt-1 h-10 w-full border border-black/20 bg-stone-50 px-3.5 text-sm text-black outline-none focus:border-black"
@@ -131,34 +132,6 @@ export default function LoginPage() {
               SIGN IN
             </Button>
           </form>
-
-          {/* Quick preset buttons for demo testing convenience */}
-          <div className="mt-4 border-t border-black/10 pt-3">
-            <p className="text-[9px] font-bold uppercase tracking-wider text-black/40">DEMO ACCOUNTS:</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
-              <button
-                type="button"
-                onClick={() => { setUsername("customer"); setPassword("customer123"); }}
-                className="border border-black/15 bg-stone-50 px-2 py-0.5 font-mono font-bold hover:bg-stone-200"
-              >
-                Customer
-              </button>
-              <button
-                type="button"
-                onClick={() => { setUsername("staff"); setPassword("staff123"); }}
-                className="border border-black/15 bg-stone-50 px-2 py-0.5 font-mono font-bold hover:bg-stone-200"
-              >
-                Staff
-              </button>
-              <button
-                type="button"
-                onClick={() => { setUsername("manager"); setPassword("manager123"); }}
-                className="border border-black/15 bg-stone-50 px-2 py-0.5 font-mono font-bold hover:bg-stone-200"
-              >
-                Manager
-              </button>
-            </div>
-          </div>
 
           <p className="mt-4 text-center text-[11px] font-semibold text-black/60">
             ยังไม่มีบัญชี? <Link href="/signup" className="font-black uppercase tracking-wider text-black underline underline-offset-4">Create account</Link>

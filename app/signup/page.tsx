@@ -26,7 +26,7 @@ export default function SignupPage() {
       return;
     }
     setPasswordError("");
-    signup.mutate({ name: String(data.get("name")), email: String(data.get("email")), password }, {
+    signup.mutate({ display_name: String(data.get("display_name")).trim(), email: String(data.get("email")).trim(), password }, {
       onSuccess: () => { router.replace("/"); router.refresh(); }
     });
   };
@@ -52,7 +52,7 @@ export default function SignupPage() {
           <form onSubmit={submit} className="space-y-3">
             <label className="block text-[10px] font-bold uppercase tracking-[0.18em] text-black/70">
               Display name
-              <input name="name" autoComplete="name" minLength={2} required placeholder="ชื่อของคุณ" className={inputClass} />
+              <input name="display_name" autoComplete="name" maxLength={100} required placeholder="ชื่อของคุณ" className={inputClass} />
             </label>
             <label className="block text-[10px] font-bold uppercase tracking-[0.18em] text-black/70">
               Email
@@ -61,7 +61,7 @@ export default function SignupPage() {
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-[10px] font-bold uppercase tracking-[0.18em] text-black/70">
                 Password
-                <input name="password" autoComplete="new-password" type="password" minLength={8} required placeholder="8+ characters" className={inputClass} />
+                <input name="password" autoComplete="new-password" type="password" minLength={8} maxLength={72} required placeholder="8+ characters" className={inputClass} />
               </label>
               <label className="block text-[10px] font-bold uppercase tracking-[0.18em] text-black/70">
                 Confirm

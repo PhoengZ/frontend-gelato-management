@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, BarChart3, Loader2, RefreshCw, TrendingUp } from "lucide-react";
@@ -7,7 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useAnalytics } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
+import type { AnalyticsPeriod } from "@/types";
 import pistachioHero from "@/public/hero/1.png";
+
+const periods: Array<{ value: AnalyticsPeriod; label: string }> = [
+  { value: "1d", label: "1 day" },
+  { value: "1w", label: "7 days" },
+  { value: "1m", label: "30 days" },
+  { value: "6m", label: "6 months" }
+];
 
 function SalesTrendChart({ trend }: { trend: Array<{ date: string; label: string; revenue: number; orders: number }> }) {
   const width = 720;
@@ -22,7 +31,7 @@ function SalesTrendChart({ trend }: { trend: Array<{ date: string; label: string
   const areaPoints = `${padding.left},${padding.top + chartHeight} ${points} ${padding.left + chartWidth},${padding.top + chartHeight}`;
 
   return (
-    <div className="mt-6 overflow-x-auto" role="img" aria-label="กราฟรายได้ย้อนหลัง 7 วัน">
+    <div className="mt-6 overflow-x-auto" role="img" aria-label="กราฟรายได้ย้อนหลัง">
       <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[620px]" aria-hidden="true">
         <defs><linearGradient id="sales-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#f79bad" stopOpacity="0.55" /><stop offset="1" stopColor="#f79bad" stopOpacity="0.04" /></linearGradient></defs>
         {[0, 0.5, 1].map((ratio) => {
@@ -43,7 +52,9 @@ function SalesTrendChart({ trend }: { trend: Array<{ date: string; label: string
 }
 
 export default function AnalyticsPage() {
-  const analytics = useAnalytics();
+  const [period, setPeriod] = useState<AnalyticsPeriod>("1w");
+  const analytics = useAnalytics(period);
+  const periodLabel = periods.find((item) => item.value === period)?.label ?? period;
   if (analytics.isLoading) return <main className="grid min-h-[70vh] place-items-center"><Loader2 className="h-8 w-8 animate-spin" /></main>;
   if (analytics.isError || !analytics.data) return <main className="mx-auto max-w-xl p-12 text-center"><h1 className="text-2xl font-bold">โหลดรายงานไม่สำเร็จ</h1><Button className="mt-5" onClick={() => void analytics.refetch()}>RETRY</Button></main>;
   const data = analytics.data;
@@ -72,7 +83,15 @@ export default function AnalyticsPage() {
               ภาพรวมยอดขายและ Waste Trends จากข้อมูลปัจจุบัน
             </p>
           </div>
-          <div className="relative z-10 flex gap-3">
+          <div className="relative z-10 flex flex-wrap gap-3">
+            <select
+              value={period}
+              onChange={(event) => setPeriod(event.target.value as AnalyticsPeriod)}
+              aria-label="ช่วงเวลา"
+              className="h-10 border border-black bg-white px-3 text-xs font-bold uppercase tracking-wider text-black"
+            >
+              {periods.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
             <Button asChild variant="outline" className="border-black bg-white text-black hover:bg-stone-100">
               <Link href="/manager"><ArrowLeft className="mr-2 h-4 w-4" /> INVENTORY</Link>
             </Button>
@@ -111,7 +130,7 @@ export default function AnalyticsPage() {
         <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
           <Card className="border border-black bg-white p-6 shadow-none sm:p-8">
             <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
-              <div className="flex items-center gap-3"><TrendingUp className="h-5 w-5 text-[#c14f76]" /><div><h2 className="text-lg font-bold uppercase tracking-wide">7-day revenue trend</h2><p className="mt-1 text-xs text-black/45">รายได้รวมรายวัน · บาท</p></div></div>
+              <div className="flex items-center gap-3"><TrendingUp className="h-5 w-5 text-[#c14f76]" /><div><h2 className="text-lg font-bold uppercase tracking-wide">{periodLabel} revenue trend</h2><p className="mt-1 text-xs text-black/45">รายได้รวมรายวัน · บาท</p></div></div>
               <span className="border border-black bg-[#fff3f7] px-3 py-1.5 font-mono text-xs font-bold">{formatPrice(data.salesTrend.reduce((sum, day) => sum + day.revenue, 0))}</span>
             </div>
             <SalesTrendChart trend={data.salesTrend} />
@@ -124,7 +143,7 @@ export default function AnalyticsPage() {
               <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Avg. order value</dt><dd className="font-mono text-xl font-bold">{formatPrice(averageOrder)}</dd></div>
               <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Scoops / order</dt><dd className="font-mono text-xl font-bold">{averageScoops.toFixed(1)}</dd></div>
               <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Waste rate</dt><dd className="font-mono text-xl font-bold text-[#f79bad]">{wasteRate.toFixed(1)}%</dd></div>
-              <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Active sales days</dt><dd className="font-mono text-xl font-bold">{data.salesTrend.filter((day) => day.orders > 0).length} / 7</dd></div>
+              <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Active sales days</dt><dd className="font-mono text-xl font-bold">{data.salesTrend.filter((day) => day.orders > 0).length} / {data.salesTrend.length}</dd></div>
             </dl>
           </Card>
         </section>

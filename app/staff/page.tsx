@@ -7,44 +7,47 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { useFulfillments, useUpdateOrderStatus } from "@/lib/api";
+import { useFulfillments, useUpdateFulfillmentStatus } from "@/lib/api";
 import { formatTime } from "@/lib/utils";
-import type { FulfillmentStatus, StaffOrder } from "@/types";
+import type { Fulfillment, UpdateFulfillmentStatusRequest } from "@/types";
 import vanillaGelato from "@/public/hero/3.png";
 
-function OrderCard({ order, onUpdate, updating }: { order: StaffOrder; onUpdate: (orderId: string, status: FulfillmentStatus) => void; updating: boolean }) {
-  const nextStatus: FulfillmentStatus = order.status === "READY" ? "PICKED_UP" : "READY";
+type NextStatus = UpdateFulfillmentStatusRequest["status"];
+
+function OrderCard({ order, onUpdate, updating }: { order: Fulfillment; onUpdate: (orderId: string, status: NextStatus) => void; updating: boolean }) {
+  const isReady = order.status === "READY_FOR_PICKUP";
+  const nextStatus: NextStatus = isReady ? "PICKED_UP" : "READY_FOR_PICKUP";
   return (
     <motion.article layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}>
       <Card className="border border-black/10 bg-white p-6 transition-all hover:border-black">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-black/60">TICKET NO.</p>
-            <h3 className="mt-1 font-mono text-4xl font-black text-black">#{order.queueNumber}</h3>
+            <h3 className="mt-1 font-mono text-4xl font-black text-black">#{order.queue_number}</h3>
           </div>
-          <Badge className={order.status === "READY" ? "border border-black bg-black text-white px-3 py-1 text-[10px] uppercase tracking-widest" : "border border-black/20 bg-stone-100 text-black px-3 py-1 text-[10px] uppercase tracking-widest"}>
-            {order.status === "READY" ? "READY FOR PICKUP" : "PREPARING"}
+          <Badge className={isReady ? "border border-black bg-black text-white px-3 py-1 text-[10px] uppercase tracking-widest" : "border border-black/20 bg-stone-100 text-black px-3 py-1 text-[10px] uppercase tracking-widest"}>
+            {isReady ? "READY FOR PICKUP" : "PREPARING"}
           </Badge>
         </div>
         <div className="mt-5 space-y-2 border-y border-black/10 py-4">
           {order.items.map((item) => (
-            <div key={item.flavorId} className="flex justify-between gap-3 text-xs uppercase tracking-wide">
-              <span className="font-bold text-black">{item.flavorName}</span>
+            <div key={item.flavor_id} className="flex justify-between gap-3 text-xs uppercase tracking-wide">
+              <span className="font-bold text-black">{item.flavor_name}</span>
               <span className="shrink-0 font-mono font-black text-black">× {item.portions}</span>
             </div>
           ))}
         </div>
         <div className="mt-5 flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5 font-mono text-[11px] font-medium text-black/60">
-            <Clock3 className="h-3.5 w-3.5 text-black" /> {formatTime(order.createdAt)} N.
+            <Clock3 className="h-3.5 w-3.5 text-black" /> PICKUP {formatTime(order.pickup_at)} N.
           </span>
           <Button 
-            onClick={() => onUpdate(order.orderId, nextStatus)} 
+            onClick={() => onUpdate(order.order_id, nextStatus)} 
             disabled={updating} 
-            variant={order.status === "READY" ? "outline" : "default"}
+            variant={isReady ? "outline" : "default"}
           >
-            {updating ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : order.status === "READY" ? <CheckCheck className="mr-2 h-3.5 w-3.5" /> : <PackageCheck className="mr-2 h-3.5 w-3.5" />}
-            {order.status === "READY" ? "COMPLETE ORDER" : "MARK READY"}
+            {updating ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : isReady ? <CheckCheck className="mr-2 h-3.5 w-3.5" /> : <PackageCheck className="mr-2 h-3.5 w-3.5" />}
+            {isReady ? "COMPLETE ORDER" : "MARK READY"}
           </Button>
         </div>
       </Card>
@@ -52,7 +55,7 @@ function OrderCard({ order, onUpdate, updating }: { order: StaffOrder; onUpdate:
   );
 }
 
-function OrderColumn({ title, description, orders, onUpdate, updatingId }: { title: string; description: string; orders: StaffOrder[]; onUpdate: (orderId: string, status: FulfillmentStatus) => void; updatingId?: string }) {
+function OrderColumn({ title, description, orders, onUpdate, updatingId }: { title: string; description: string; orders: Fulfillment[]; onUpdate: (orderId: string, status: NextStatus) => void; updatingId?: string }) {
   return (
     <section className="min-h-[34rem] border border-black bg-white p-6">
       <div className="mb-6 flex items-center justify-between gap-4 border-b border-black/10 pb-4">
@@ -66,7 +69,7 @@ function OrderColumn({ title, description, orders, onUpdate, updatingId }: { tit
       </div>
       <div className="space-y-4">
         <AnimatePresence>
-          {orders.map((order) => <OrderCard key={order.orderId} order={order} onUpdate={onUpdate} updating={updatingId === order.orderId} />)}
+          {orders.map((order) => <OrderCard key={order.order_id} order={order} onUpdate={onUpdate} updating={updatingId === order.order_id} />)}
         </AnimatePresence>
         {!orders.length && (
           <div className="grid min-h-64 place-items-center border border-dashed border-black/20 text-center text-black/40">
@@ -83,15 +86,15 @@ function OrderColumn({ title, description, orders, onUpdate, updatingId }: { tit
 
 export default function StaffPage() {
   const orders = useFulfillments();
-  const updateStatus = useUpdateOrderStatus();
-  const preparing = orders.data?.filter((order) => order.status === "PREPARING" || order.status === "PAID") ?? [];
-  const ready = orders.data?.filter((order) => order.status === "READY") ?? [];
+  const updateStatus = useUpdateFulfillmentStatus();
+  const preparing = orders.data?.filter((order) => order.status === "PREPARING") ?? [];
+  const ready = orders.data?.filter((order) => order.status === "READY_FOR_PICKUP") ?? [];
 
-  const handleUpdate = (orderId: string, status: FulfillmentStatus) => {
+  const handleUpdate = (orderId: string, status: NextStatus) => {
     updateStatus.mutate(
       { orderId, status },
       {
-        onSuccess: () => toast.success(status === "READY" ? "แจ้งลูกค้าว่าพร้อมรับแล้ว" : "ปิดออเดอร์เรียบร้อย"),
+        onSuccess: () => toast.success(status === "READY_FOR_PICKUP" ? "แจ้งลูกค้าว่าพร้อมรับแล้ว" : "ปิดออเดอร์เรียบร้อย"),
         onError: (error) => toast.error(error instanceof Error ? error.message : "อัปเดตสถานะไม่สำเร็จ")
       }
     );
@@ -148,8 +151,8 @@ export default function StaffPage() {
           </Card>
         ) : (
           <div className="grid gap-8 lg:grid-cols-2">
-            <OrderColumn title="IN PREPARATION" description="QUEUE IN PROGRESS" orders={preparing} onUpdate={handleUpdate} updatingId={updateStatus.variables?.orderId} />
-            <OrderColumn title="READY FOR PICKUP" description="AWAITING COUNTER COLLECT" orders={ready} onUpdate={handleUpdate} updatingId={updateStatus.variables?.orderId} />
+            <OrderColumn title="IN PREPARATION" description="QUEUE IN PROGRESS" orders={preparing} onUpdate={handleUpdate} updatingId={updateStatus.isPending ? updateStatus.variables?.orderId : undefined} />
+            <OrderColumn title="READY FOR PICKUP" description="AWAITING COUNTER COLLECT" orders={ready} onUpdate={handleUpdate} updatingId={updateStatus.isPending ? updateStatus.variables?.orderId : undefined} />
           </div>
         )}
       </div>
