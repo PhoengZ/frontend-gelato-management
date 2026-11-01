@@ -9,8 +9,8 @@ export function gatewayUrl() {
 }
 
 /**
- * The Gateway has no route for the notification stream yet, so it can be pointed
- * at the Notification Service directly. Falls back to the Gateway once it is routed there.
+ * The Gateway routes /api/v1/notifications/stream, so this normally falls back to it.
+ * NOTIFICATION_SERVICE_URL remains as an optional override for isolated local testing.
  */
 function notificationUrl() {
   return process.env.NOTIFICATION_SERVICE_URL?.replace(/\/$/, "") || gatewayUrl();

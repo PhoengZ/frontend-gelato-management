@@ -49,16 +49,29 @@ still returns baht.
 
 ## Backend configuration this frontend expects
 
-- Payment `STRIPE_CHECKOUT_SUCCESS_URL=http://localhost:3000/checkout/return?session_id={CHECKOUT_SESSION_ID}`
-- Payment `STRIPE_CHECKOUT_CANCEL_URL=http://localhost:3000/checkout/return?cancelled=1`
-- Signup only creates CUSTOMER accounts; STAFF and MANAGER users must be created in the Auth database.
+- Payment `STRIPE_CHECKOUT_SUCCESS_URL=<site>/checkout/return?session_id={CHECKOUT_SESSION_ID}`
+- Payment `STRIPE_CHECKOUT_CANCEL_URL=<site>/checkout/return?cancelled=1`
+- Signup only creates CUSTOMER accounts; STAFF and MANAGER users must be promoted in the
+  Auth database (see `backend-gelato-management/docs/deployment.md`).
+- The Gateway forwards the verified identity as `X-User-ID`/`X-User-Role` and routes
+  `/api/v1/notifications/stream`, so `NOTIFICATION_SERVICE_URL` can stay empty.
 
 ## Known backend gaps
 
-- Order reads the customer from `X-User-ID`, but the Gateway strips that header and does
-  not set it from the verified token, so `POST /orders` and `GET /orders/{id}` return 401
-  until the Gateway forwards the identity.
-- The Gateway has no route for `/api/v1/notifications/stream`; set `NOTIFICATION_SERVICE_URL`
-  to reach the Notification Service directly.
 - Order never moves past `PAID` (Fulfillment status is not fed back), so the order page
   relies on the `order.ready` notification to show "ready" and the queue number.
+
+## Production image
+
+`next.config.mjs` builds with `output: "standalone"`. The `Dockerfile` produces a
+small Node 22 image that listens on port 3000 and needs only `API_GATEWAY_URL` at
+runtime:
+
+```bash
+docker build -t gelatoflow-frontend .
+docker run -p 3000:3000 -e API_GATEWAY_URL=http://api-gateway:8080 gelatoflow-frontend
+```
+
+The backend repository's `infra/docker/compose.prod.yml` builds this image from a
+sibling checkout and serves it behind Caddy with HTTPS. Set `NODE_ENV=production`
+(the image does) so the session cookie is marked `Secure`.
