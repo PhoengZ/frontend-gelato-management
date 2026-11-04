@@ -3,17 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, Boxes, ChefHat, Home, LogOut, ShieldCheck } from "lucide-react";
+import { BarChart3, Boxes, ChefHat, LogOut, ShieldCheck, Store } from "lucide-react";
 import { useLogout, useSession } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import logo from "@/public/logo.png";
 
-const baseItems = [{ href: "/staff", label: "Fulfillment", description: "Orders & queue", icon: ChefHat }];
+const baseItems = [{ href: "/staff", label: "ครัว", description: "ออเดอร์และคิว", icon: ChefHat }];
 const managerItems = [
-  { href: "/manager", label: "Menu & Inventory", description: "Catalog & batches", icon: Boxes },
-  { href: "/analytics", label: "Analytics", description: "Sales & waste", icon: BarChart3 }
+  { href: "/manager", label: "เมนูและคลังสินค้า", description: "เมนู · Batch · ของเสีย", icon: Boxes },
+  { href: "/analytics", label: "รายงาน", description: "ยอดขายและของเสีย", icon: BarChart3 }
 ];
 
+/** Desktop backoffice layout (Figma: Sidebar) with a compact top bar below md. */
 export function BackofficeShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -25,85 +26,73 @@ export function BackofficeShell({ children }: { children: React.ReactNode }) {
   const logoutNow = () => logout.mutate(undefined, { onSuccess: () => { router.push("/login"); router.refresh(); } });
 
   return (
-    <div className="font-prompt min-h-screen bg-stone-50 md:grid md:grid-cols-[15.5rem_minmax(0,1fr)]">
-      <aside className="sticky top-0 hidden h-screen flex-col border-r border-black/10 bg-white text-black md:flex">
-        <div className="border-b border-black/10 px-6 py-6">
+    <div className="min-h-screen bg-canvas md:grid md:grid-cols-[16rem_minmax(0,1fr)]">
+      <aside className="sticky top-0 hidden h-screen flex-col gap-7 border-r border-line bg-white px-4 pb-5 pt-6 md:flex">
+        <div className="space-y-2.5 px-2">
           <Link href="/" aria-label="Gelatte home">
-            <Image src={logo} alt="Gelatte" width={220} height={60} priority className="h-10 w-auto object-contain" />
+            <Image src={logo} alt="Gelatte" priority className="h-9 w-auto" />
           </Link>
-          <div className="mt-4 flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.2em] text-black/60">
-            <ShieldCheck className="h-3.5 w-3.5 text-black" /> BACKOFFICE PORTAL
-          </div>
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-subtle">
+            <ShieldCheck className="h-3.5 w-3.5" /> Backoffice
+          </p>
         </div>
 
-        <nav className="flex-1 space-y-1.5 p-4" aria-label="Backoffice navigation">
+        <nav className="flex-1 space-y-1" aria-label="Backoffice navigation">
           {items.map(({ href, label, description, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <Link
                 key={href}
                 href={href}
-                className={cn(
-                  "flex items-center gap-3 border px-3.5 py-3 transition-all",
-                  active
-                    ? "border-black bg-black text-white"
-                    : "border-transparent text-black/70 hover:border-black/20 hover:bg-stone-50 hover:text-black"
-                )}
+                aria-current={active ? "page" : undefined}
+                className={cn("flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors", active ? "bg-ink text-canvas" : "text-ink hover:bg-canvas")}
               >
-                <Icon className="h-4 w-4 shrink-0" />
+                <Icon className={cn("h-5 w-5 shrink-0", !active && "text-subtle")} strokeWidth={1.75} />
                 <span>
-                  <span className="block text-xs font-bold uppercase tracking-wider">{label}</span>
-                  <span className={cn("mt-0.5 block text-[9px] uppercase tracking-widest", active ? "text-white/70" : "text-black/40")}>
-                    {description}
-                  </span>
+                  <span className={cn("block text-sm", active && "font-semibold")}>{label}</span>
+                  <span className={cn("block text-xs", active ? "text-canvas/65" : "text-subtle")}>{description}</span>
                 </span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="border-t border-black/10 p-4">
-          <div className="px-2 pb-3">
-            <p className="truncate text-xs font-bold text-black">{user?.display_name ?? "Loading account..."}</p>
-            <p className="mt-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-black/50">{user?.role ?? "SECURE SESSION"}</p>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5 rounded-2xl bg-canvas p-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-pink text-sm font-semibold">{user?.display_name.slice(0, 1) ?? "·"}</span>
+            <div className="min-w-0">
+              <p className="truncate text-sm">{user?.display_name ?? "กำลังโหลดบัญชี…"}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-subtle">{user?.role ?? "Secure session"}</p>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={logoutNow}
-            disabled={logout.isPending}
-            className="flex w-full items-center gap-2.5 border border-black/15 bg-white px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-black transition-colors hover:border-black hover:bg-stone-100 disabled:opacity-40"
-          >
-            <LogOut className="h-3.5 w-3.5" /> Logout
+          <button type="button" onClick={logoutNow} disabled={logout.isPending} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-subtle hover:bg-canvas hover:text-ink disabled:opacity-40">
+            <LogOut className="h-[18px] w-[18px]" strokeWidth={1.75} /> ออกจากระบบ
           </button>
-          <Link href="/" className="mt-2 flex items-center gap-2 px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-black/50 hover:text-black">
-            <Home className="h-3.5 w-3.5" /> Storefront
+          <Link href="/" className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-subtle hover:bg-canvas hover:text-ink">
+            <Store className="h-[18px] w-[18px]" strokeWidth={1.75} /> ไปหน้าร้าน
           </Link>
         </div>
       </aside>
 
       <div className="min-w-0">
-        <header className="sticky top-0 z-50 border-b border-black/10 bg-white px-4 py-3 text-black md:hidden">
+        <header className="sticky top-0 z-40 border-b border-line bg-white px-4 py-3 md:hidden">
           <div className="flex items-center justify-between">
-            <Image src={logo} alt="Gelatte" width={160} height={44} className="h-8 w-auto object-contain" />
-            <span className="text-[9px] font-bold uppercase tracking-widest text-black/60">{user?.role ?? "BACKOFFICE"}</span>
+            <Image src={logo} alt="Gelatte" className="h-8 w-auto" />
+            <button onClick={logoutNow} className="grid h-9 w-9 place-items-center rounded-full hover:bg-ink/5" aria-label="ออกจากระบบ">
+              <LogOut className="h-[18px] w-[18px]" />
+            </button>
           </div>
           <nav className="mt-3 flex gap-2 overflow-x-auto pb-1">
             {items.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
                 href={href}
-                className={cn(
-                  "flex shrink-0 items-center gap-2 border px-3 py-2 text-[9px] font-bold uppercase tracking-wider",
-                  pathname === href ? "border-black bg-black text-white" : "border-black/15 bg-white text-black/70"
-                )}
+                className={cn("flex h-9 shrink-0 items-center gap-2 rounded-full px-4 text-sm", pathname === href ? "bg-ink text-canvas" : "border border-line bg-white")}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className="h-4 w-4" />
                 {label}
               </Link>
             ))}
-            <button onClick={logoutNow} className="ml-auto flex shrink-0 items-center border border-black/15 bg-white px-3 text-black" aria-label="Logout">
-              <LogOut className="h-3.5 w-3.5" />
-            </button>
           </nav>
         </header>
         {children}

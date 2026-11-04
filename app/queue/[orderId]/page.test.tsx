@@ -34,9 +34,9 @@ describe("QueueTracker", () => {
   it("offers to continue or cancel an unpaid order", () => {
     useOrder.mockReturnValue({ isLoading: false, isError: false, data: { ...order, status: "PENDING_PAYMENT" } });
     render(<QueueTracker orderId={orderId} />);
-    expect(screen.getByText("AWAITING PAYMENT")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /cancel order/i })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /continue payment/i })).toBeDisabled();
+    expect(screen.getByText("รอชำระเงิน")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ยกเลิกคำสั่งซื้อ" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "ชำระเงินต่อ" })).toBeDisabled();
   });
 
   it("clears the cart once its order is paid", () => {
@@ -46,7 +46,7 @@ describe("QueueTracker", () => {
     });
     useOrder.mockReturnValue({ isLoading: false, isError: false, data: { ...order, status: "PAID" } });
     render(<QueueTracker orderId={orderId} />);
-    expect(screen.getByText("PAID — ORDER CONFIRMED")).toBeInTheDocument();
+    expect(screen.getByText("ชำระเงินแล้ว")).toBeInTheDocument();
     expect(useCartStore.getState().items).toHaveLength(0);
   });
 
@@ -61,6 +61,6 @@ describe("QueueTracker", () => {
     useOrder.mockReturnValue({ isLoading: false, isError: false, data: { ...order, status: "PAID" } });
     render(<QueueTracker orderId={orderId} />);
     expect(screen.getByLabelText("คิว 07")).toBeInTheDocument();
-    expect(screen.getByText("READY NOW")).toBeInTheDocument();
+    expect(screen.getByText("พร้อมรับเลย")).toBeInTheDocument();
   });
 });

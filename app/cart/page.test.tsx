@@ -31,16 +31,16 @@ describe("CartPage", () => {
   it("redirects an unauthenticated shopper before opening checkout", async () => {
     session.mockReturnValue({ data: undefined, isLoading: false, isError: true });
     render(<CartPage />);
-    await userEvent.click(screen.getByRole("button", { name: /proceed to checkout/i }));
+    await userEvent.click(screen.getByRole("button", { name: "ไปชำระเงิน" }));
     expect(push).toHaveBeenCalledWith("/login?next=/cart");
-    expect(screen.queryByRole("button", { name: /pay with stripe/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^ชำระเงิน ฿/ })).not.toBeInTheDocument();
   });
 
   it("creates the order with a pickup time and its idempotency key", async () => {
     session.mockReturnValue({ data: { role: "CUSTOMER" }, isLoading: false, isError: false });
     render(<CartPage />);
-    await userEvent.click(screen.getByRole("button", { name: /proceed to checkout/i }));
-    await userEvent.click(await screen.findByRole("button", { name: /pay with stripe/i }));
+    await userEvent.click(screen.getByRole("button", { name: "ไปชำระเงิน" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^ชำระเงิน ฿/ }));
 
     const checkout = useCartStore.getState().checkout!;
     expect(checkout.order.items).toEqual([{ flavor_id: "vanilla-id", portions: 2 }]);

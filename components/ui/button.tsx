@@ -4,20 +4,21 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-none border border-black text-xs font-black uppercase tracking-[0.12em] transition-[transform,box-shadow,background-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:pointer-events-none disabled:translate-x-0 disabled:translate-y-0 disabled:shadow-none disabled:opacity-40",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-[15px] font-semibold transition-[background-color,border-color,color,transform,opacity] duration-150 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-40 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-[#fffaf2] text-black shadow-[5px_5px_0_#111] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-white hover:shadow-[7px_7px_0_#111] active:translate-x-[3px] active:translate-y-[3px] active:shadow-[2px_2px_0_#111]",
-        secondary: "bg-[#f79bad] text-black shadow-[5px_5px_0_#111] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-[#ffaabd] hover:shadow-[7px_7px_0_#111] active:translate-x-[3px] active:translate-y-[3px] active:shadow-[2px_2px_0_#111]",
-        outline: "bg-white text-black shadow-[3px_3px_0_#111] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-[#fffaf2] hover:shadow-[5px_5px_0_#111] active:translate-x-0.5 active:translate-y-0.5 active:shadow-none",
-        ghost: "border-transparent bg-transparent text-black shadow-none hover:border-black hover:bg-[#fffaf2] active:bg-[#f7eee2]",
-        destructive: "bg-[#e94b55] text-white shadow-[5px_5px_0_#111] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-[#f05b65] hover:shadow-[7px_7px_0_#111] active:translate-x-[3px] active:translate-y-[3px] active:shadow-[2px_2px_0_#111]"
+        default: "bg-ink text-canvas hover:bg-ink/85",
+        outline: "border border-line bg-white text-ink hover:border-ink/25 hover:bg-white",
+        secondary: "bg-pink text-ink hover:bg-pink/85",
+        soft: "bg-pink-soft text-ink hover:bg-pink-soft/70",
+        ghost: "bg-transparent text-ink hover:bg-ink/5",
+        destructive: "bg-pink-strong text-white hover:bg-pink-strong/90"
       },
       size: {
-        default: "h-11 px-5 py-2",
-        sm: "h-9 px-4",
-        lg: "h-12 px-7 text-base",
+        default: "h-12 px-6",
+        sm: "h-10 px-4 text-sm",
+        lg: "h-[52px] px-6",
         icon: "h-10 w-10 p-0"
       }
     },

@@ -32,12 +32,12 @@ describe("StaffPage", () => {
     render(<StaffPage />);
     expect(screen.getByText("#01")).toBeInTheDocument();
     expect(screen.getByText("#02")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "MARK READY" }));
+    await userEvent.click(screen.getByRole("button", { name: "พร้อมเสิร์ฟ" }));
     expect(mutate).toHaveBeenCalledWith(
       { orderId: "o1", status: "READY_FOR_PICKUP" },
       expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) })
     );
-    await userEvent.click(screen.getByRole("button", { name: "COMPLETE ORDER" }));
+    await userEvent.click(screen.getByRole("button", { name: "ส่งมอบแล้ว" }));
     expect(mutate).toHaveBeenLastCalledWith({ orderId: "o2", status: "PICKED_UP" }, expect.any(Object));
   });
 });

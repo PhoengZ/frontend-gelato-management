@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import defaultTheme from "tailwindcss/defaultTheme";
 
 const config: Config = {
   darkMode: ["class"],
@@ -9,7 +10,24 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-anuphan)", ...defaultTheme.fontFamily.sans]
+      },
       colors: {
+        // Gelatte brand tokens (Figma: Gelatte / Tokens)
+        ink: "#141012",
+        subtle: "#6B6266",
+        canvas: "#FFFAF4",
+        line: "#EFE6E2",
+        pink: {
+          DEFAULT: "#F88397",
+          soft: "#FDE4E8",
+          strong: "#E8566F"
+        },
+        pistachio: { soft: "#E8F0DC" },
+        vanilla: { soft: "#FBF1DC" },
+        success: "#33A05C",
+
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -40,14 +58,9 @@ const config: Config = {
           foreground: "hsl(var(--card-foreground))"
         }
       },
-      borderRadius: {
-        xl: "calc(var(--radius) + 4px)",
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)"
-      },
       boxShadow: {
-        soft: "0 18px 50px -24px rgba(86, 62, 44, 0.35)"
+        float: "0 12px 28px -8px rgba(20, 16, 18, 0.22)",
+        sheet: "0 -8px 32px rgba(20, 16, 18, 0.18)"
       }
     }
   },

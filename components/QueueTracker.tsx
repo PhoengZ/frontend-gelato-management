@@ -1,81 +1,44 @@
 "use client";
 
-import Image from "next/image";
+import Image, { type StaticImageData } from "next/image";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { BellOff, BellRing, CheckCircle2, ChefHat, Clock3, CreditCard, Loader2, ReceiptText, RefreshCw, XCircle } from "lucide-react";
+import { BellOff, BellRing, Check, Clock3, CreditCard, Loader2, ReceiptText, RefreshCw, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { useCancelOrder, useCreateOrder, useOrder } from "@/lib/api";
-import { formatMinor, formatTime } from "@/lib/utils";
+import { cn, formatMinor, formatTime } from "@/lib/utils";
 import { useCartStore } from "@/store/useCartStore";
 import { useReadyNotification } from "@/store/useNotificationStore";
 import type { OrderStatus } from "@/types";
 import cookieMascot from "@/public/cookie-mascot.png";
+import chefScoop from "@/public/illustrations/chef-scoop.png";
+import readyCone from "@/public/illustrations/ready-cone.png";
 
 interface StatusView {
   title: string;
   description: string;
-  badge: string;
+  tone: NonNullable<BadgeProps["tone"]>;
   icon: LucideIcon;
+  /** Index into `steps`; -1 hides the progress bar. */
+  step: number;
+  image?: StaticImageData;
 }
 
-const muted = "border border-black/20 bg-stone-100 text-black";
-const strong = "border border-black bg-black text-white";
+const steps = ["ชำระเงิน", "กำลังเตรียม", "พร้อมรับ", "รับแล้ว"];
 
 const statusView: Record<OrderStatus, StatusView> = {
-  PENDING_PAYMENT: {
-    title: "AWAITING PAYMENT",
-    description: "จองสต็อกไว้ให้แล้ว กรุณาชำระเงินให้เสร็จก่อนหมดเวลาจอง",
-    badge: muted,
-    icon: CreditCard
-  },
-  PAYMENT_CONFIRMING: {
-    title: "CONFIRMING PAYMENT",
-    description: "ได้รับผลการชำระเงินแล้ว กำลังยืนยันสต็อก...",
-    badge: muted,
-    icon: Loader2
-  },
-  CANCEL_PENDING: {
-    title: "CANCELLING ORDER",
-    description: "กำลังยกเลิกคำสั่งซื้อและคืนสต็อก...",
-    badge: muted,
-    icon: Loader2
-  },
-  PAID: {
-    title: "PAID — ORDER CONFIRMED",
-    description: "รับออเดอร์แล้ว กำลังส่งเข้าคิวเตรียม Gelato",
-    badge: muted,
-    icon: ReceiptText
-  },
-  PREPARING: {
-    title: "PREPARING GELATO",
-    description: "เชฟกำลังตั้งใจตัก Gelato สดใหม่สำหรับคุณ...",
-    badge: strong,
-    icon: ChefHat
-  },
-  READY_FOR_PICKUP: {
-    title: "READY FOR PICKUP",
-    description: "เจลาโต้ของคุณพร้อมแล้ว! แสดงหน้าจอนี้แก่พนักงานที่เคาน์เตอร์",
-    badge: `${strong} animate-pulse`,
-    icon: BellRing
-  },
-  COMPLETED: {
-    title: "ORDER COMPLETED",
-    description: "รับสินค้าเรียบร้อยแล้ว ขอให้มีความสุขกับ Gelato ครับ",
-    badge: "border border-black/20 bg-stone-100 text-black/60",
-    icon: CheckCircle2
-  },
-  CANCELLED: {
-    title: "ORDER CANCELLED",
-    description: "คำสั่งซื้อนี้ถูกยกเลิกและคืนสต็อกแล้ว",
-    badge: "border border-black/20 bg-stone-100 text-black/60",
-    icon: XCircle
-  }
+  PENDING_PAYMENT: { title: "รอชำระเงิน", description: "จองสต็อกไว้ให้แล้ว กรุณาชำระเงินให้เสร็จก่อนหมดเวลาจอง", tone: "neutral", icon: CreditCard, step: 0 },
+  PAYMENT_CONFIRMING: { title: "กำลังยืนยันการชำระ", description: "ได้รับผลการชำระเงินแล้ว กำลังยืนยันสต็อก…", tone: "neutral", icon: Loader2, step: 0 },
+  CANCEL_PENDING: { title: "กำลังยกเลิก", description: "กำลังยกเลิกคำสั่งซื้อและคืนสต็อก…", tone: "neutral", icon: Loader2, step: -1 },
+  PAID: { title: "ชำระเงินแล้ว", description: "รับออเดอร์แล้ว กำลังส่งเข้าคิวเตรียมเจลาโต", tone: "soft", icon: ReceiptText, step: 1 },
+  PREPARING: { title: "กำลังเตรียม", description: "เชฟกำลังตั้งใจตักเจลาโตสดใหม่สำหรับคุณ", tone: "ink", icon: Loader2, step: 1, image: chefScoop },
+  READY_FOR_PICKUP: { title: "พร้อมรับแล้ว", description: "เจลาโตของคุณพร้อมแล้ว! แสดงหน้าจอนี้แก่พนักงานที่เคาน์เตอร์", tone: "ink", icon: BellRing, step: 2, image: readyCone },
+  COMPLETED: { title: "รับสินค้าแล้ว", description: "ขอให้มีความสุขกับเจลาโตนะ แล้วพบกันใหม่!", tone: "success", icon: Check, step: 3 },
+  CANCELLED: { title: "ยกเลิกแล้ว", description: "คำสั่งซื้อนี้ถูกยกเลิกและคืนสต็อกเรียบร้อยแล้ว", tone: "neutral", icon: X, step: -1 }
 };
 
 const unpaidStatuses: OrderStatus[] = ["PENDING_PAYMENT", "CANCEL_PENDING", "PAYMENT_CONFIRMING", "CANCELLED"];
@@ -97,6 +60,18 @@ function playReadyTone() {
   oscillator.start();
   oscillator.stop(context.currentTime + 0.36);
   oscillator.addEventListener("ended", () => void context.close());
+}
+
+function InfoTile({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-3xl border border-line bg-white p-3.5">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-canvas"><Icon className="h-[18px] w-[18px]" strokeWidth={1.75} /></span>
+      <div className="min-w-0">
+        <p className="text-xs text-subtle">{label}</p>
+        <p className="truncate text-[17px] font-semibold">{value}</p>
+      </div>
+    </div>
+  );
 }
 
 export function QueueTracker({ orderId }: { orderId: string }) {
@@ -153,10 +128,12 @@ export function QueueTracker({ orderId }: { orderId: string }) {
 
   if (query.isLoading) {
     return (
-      <main className="grid min-h-[75vh] place-items-center">
+      <main className="grid min-h-[75svh] place-items-center">
         <div className="text-center">
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-black" />
-          <p className="mt-4 text-xs font-bold uppercase tracking-widest text-black/60">LOADING YOUR ORDER...</p>
+          <span className="mx-auto grid h-[72px] w-[72px] place-items-center rounded-full bg-pink-soft">
+            <Loader2 className="h-8 w-8 animate-spin text-pink-strong" />
+          </span>
+          <p className="mt-4 text-sm text-subtle">กำลังโหลดคำสั่งซื้อ…</p>
         </div>
       </main>
     );
@@ -164,18 +141,17 @@ export function QueueTracker({ orderId }: { orderId: string }) {
 
   if (query.isError || !order || !status) {
     return (
-      <main className="mx-auto grid min-h-[70vh] max-w-lg place-items-center px-6 text-center">
-        <div className="border border-black bg-white p-10">
-          <h1 className="text-xl font-bold uppercase tracking-wider text-black">ORDER NOT FOUND</h1>
-          <p className="mt-2 text-xs uppercase tracking-widest text-black/60">ไม่พบคำสั่งซื้อนี้ในบัญชีของคุณ</p>
-          <div className="mt-8 flex justify-center gap-3">
-            <Button variant="outline" onClick={() => void query.refetch()}>
-              <RefreshCw className="mr-2 h-4 w-4" /> RETRY
-            </Button>
-            <Button asChild>
-              <Link href="/">RETURN TO COLLECTION</Link>
-            </Button>
-          </div>
+      <main className="mx-auto flex min-h-[calc(100svh-60px)] max-w-md flex-col items-center justify-center px-8 pb-20 text-center">
+        <span className="relative h-40 w-40 overflow-hidden rounded-full bg-pink-soft">
+          <Image src={cookieMascot} alt="" fill sizes="160px" className="object-contain" />
+        </span>
+        <h1 className="mt-3 text-[22px] font-semibold">ไม่พบคำสั่งซื้อนี้</h1>
+        <p className="mt-2 text-[15px] text-subtle">คำสั่งซื้อนี้ไม่อยู่ในบัญชีของคุณ<br />หรืออาจถูกลบไปแล้ว</p>
+        <div className="mt-6 flex gap-2.5">
+          <Button variant="outline" onClick={() => void query.refetch()}>
+            <RefreshCw className="h-4 w-4" /> ลองใหม่
+          </Button>
+          <Link href="/" className={buttonVariants()}>กลับหน้าแรก</Link>
         </div>
       </main>
     );
@@ -184,126 +160,129 @@ export function QueueTracker({ orderId }: { orderId: string }) {
   const view = statusView[status];
   const Icon = view.icon;
   const spinning = status === "PAYMENT_CONFIRMING" || status === "CANCEL_PENDING";
+  const cancelled = status === "CANCELLED";
 
   return (
-    <main className="font-prompt mx-auto max-w-2xl px-6 pb-24 pt-10 sm:pt-14">
-      <div className="mb-6 flex items-center justify-between gap-4 border-b border-black pb-4">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-black">YOUR ORDER</p>
-          <p className="mt-0.5 font-mono text-[11px] font-medium text-black/60">PLACED AT {formatTime(order.created_at)} N.</p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
+    <main className="mx-auto max-w-xl space-y-4 px-4 pb-16 pt-1">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-subtle">สั่งเมื่อ {formatTime(order.created_at)} น. · #{order.order_id.slice(0, 8).toUpperCase()}</p>
+        <button
+          type="button"
           onClick={() => {
             const next = !soundEnabled;
             setSoundEnabled(next);
             if (next) playReadyTone();
           }}
           aria-pressed={soundEnabled}
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors",
+            soundEnabled ? "bg-ink text-canvas" : "border border-line bg-white"
+          )}
         >
-          {soundEnabled ? <BellRing className="mr-2 h-3.5 w-3.5" /> : <BellOff className="mr-2 h-3.5 w-3.5" />}
-          {soundEnabled ? "SOUND ON" : "ENABLE NOTIFICATION"}
-        </Button>
+          {soundEnabled ? <BellRing className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
+          {soundEnabled ? "เสียงเปิดอยู่" : "เปิดเสียงแจ้งเตือน"}
+        </button>
       </div>
 
       <motion.section
         animate={ready && !reduceMotion ? { scale: [1, 1.01, 1] } : undefined}
         transition={ready && !reduceMotion ? { repeat: Infinity, duration: 1.8 } : undefined}
+        className={cn(
+          "overflow-hidden rounded-3xl text-center",
+          ready ? "bg-brand-gradient" : cancelled ? "bg-line" : "bg-pink-soft"
+        )}
       >
-        <Card className="relative overflow-hidden border border-black bg-[#f79bad] p-8 text-center sm:p-14 shadow-2xl transition-all">
-          <div className="pointer-events-none absolute -left-5 -top-5 z-0 h-24 w-24 -rotate-12 opacity-85 sm:h-32 sm:w-32">
-            <Image src={cookieMascot} alt="" fill className="object-contain" />
-          </div>
-          <div className="pointer-events-none absolute -right-6 -bottom-6 z-0 h-28 w-28 rotate-12 opacity-85 sm:h-36 sm:w-36">
-            <Image src={cookieMascot} alt="" fill className="object-contain" />
-          </div>
-          <div className="pointer-events-none absolute -bottom-4 left-6 z-0 h-20 w-20 -rotate-45 opacity-60 sm:h-24 sm:w-24">
-            <Image src={cookieMascot} alt="" fill className="object-contain" />
-          </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={status}
+            initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+          >
+            {status === "PREPARING" && view.image ? (
+              <Image src={view.image} alt="เชฟกำลังตักเจลาโต" className="h-[170px] w-full object-cover" priority />
+            ) : view.image ? (
+              <Image src={view.image} alt="" className="mx-auto mt-7 h-[180px] w-[180px] rounded-full object-cover shadow-float" priority />
+            ) : (
+              <span className="mx-auto mt-8 grid h-14 w-14 place-items-center rounded-full bg-white">
+                <Icon className={cn("h-6 w-6", spinning && "animate-spin")} />
+              </span>
+            )}
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={status}
-              initial={reduceMotion ? false : { opacity: 0, y: 18, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={reduceMotion ? undefined : { opacity: 0, y: -12 }}
-              transition={{ duration: 0.35 }}
-              className="relative z-10"
-            >
-              <div className="mx-auto flex h-16 w-16 items-center justify-center border border-black bg-white shadow-sm">
-                <Icon className={`h-8 w-8 text-black ${spinning ? "animate-spin" : ""}`} />
-              </div>
+            <div className="space-y-2 px-6 pb-7 pt-3">
               {queueNumber ? (
-                <div className="mt-8 font-mono text-[clamp(4.5rem,18vw,8rem)] font-black leading-none tracking-tighter text-[#32111c]" aria-label={`คิว ${queueNumber}`}>
-                  #{queueNumber}
-                </div>
+                <>
+                  <p className="text-xs">หมายเลขคิวของคุณ</p>
+                  <p className="text-[84px] font-bold leading-none tracking-[-0.04em]" aria-label={`คิว ${queueNumber}`}>#{queueNumber}</p>
+                </>
               ) : (
-                <div className="mt-8 font-mono text-[clamp(3rem,12vw,5.5rem)] font-black leading-none tracking-tighter text-[#32111c]" aria-label={`รับสินค้าเวลา ${formatTime(order.pickup_at)}`}>
-                  {formatTime(order.pickup_at)}
-                </div>
+                <>
+                  <p className={cn("text-xs", cancelled && "text-subtle")}>เวลารับสินค้า</p>
+                  <p
+                    className={cn("text-[64px] font-bold leading-none tracking-[-0.04em]", cancelled && "text-subtle line-through")}
+                    aria-label={`รับสินค้าเวลา ${formatTime(order.pickup_at)}`}
+                  >
+                    {formatTime(order.pickup_at)}
+                  </p>
+                </>
               )}
-              <Badge className={`mt-8 px-4 py-2 text-xs uppercase tracking-widest font-bold ${view.badge}`}>
-                {view.title}
-              </Badge>
-              <p className="mx-auto mt-6 max-w-md text-sm font-bold leading-relaxed uppercase tracking-wider text-[#4a1424]">{view.description}</p>
-            </motion.div>
-          </AnimatePresence>
-        </Card>
+              <Badge tone={view.tone} pulse={ready}>{view.title}</Badge>
+              <p className="mx-auto max-w-xs text-[15px] leading-relaxed text-ink/75">{view.description}</p>
+            </div>
+          </motion.div>
+        </AnimatePresence>
       </motion.section>
 
+      {view.step >= 0 && (
+        <ol className="grid grid-cols-4 gap-1.5" aria-label="ความคืบหน้าคำสั่งซื้อ">
+          {steps.map((label, index) => {
+            const done = index <= view.step;
+            const current = index === view.step;
+            return (
+              <li key={label} className="space-y-1.5" aria-current={current ? "step" : undefined}>
+                <span className={cn("block h-1 rounded-full", done ? (current && index < 3 ? "bg-pink" : "bg-ink") : "bg-line")} />
+                <span className={cn("block text-xs", done ? "text-ink" : "text-subtle", current && "font-semibold")}>{label}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
       {status === "PENDING_PAYMENT" && (
-        <section className="mt-6 grid gap-3 sm:grid-cols-2">
-          <Button className="h-12" onClick={continuePayment} disabled={!ownsCheckout || createOrder.isPending}>
-            {createOrder.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
-            CONTINUE PAYMENT
+        <section className="space-y-2.5">
+          <Button size="lg" className="w-full" onClick={continuePayment} disabled={!ownsCheckout || createOrder.isPending}>
+            {createOrder.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+            ชำระเงินต่อ
           </Button>
-          <Button variant="outline" className="h-12" onClick={cancel} disabled={cancelOrder.isPending}>
-            {cancelOrder.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} CANCEL ORDER
+          <Button variant="outline" size="lg" className="w-full" onClick={cancel} disabled={cancelOrder.isPending}>
+            {cancelOrder.isPending && <Loader2 className="h-4 w-4 animate-spin" />} ยกเลิกคำสั่งซื้อ
           </Button>
-          <p className="text-center text-[10px] uppercase tracking-widest text-black/50 sm:col-span-2">
-            STOCK HELD UNTIL {formatTime(order.reservation_expires_at)} N.
+          <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-pink-strong">
+            <Clock3 className="h-3.5 w-3.5" /> จองสต็อกไว้ถึง {formatTime(order.reservation_expires_at)} น.
           </p>
         </section>
       )}
 
-      <section className="mt-8 grid gap-4 sm:grid-cols-2">
-        <Card className="flex items-center gap-4 border border-black/10 bg-white p-6">
-          <div className="flex h-12 w-12 items-center justify-center border border-black bg-stone-50">
-            <Clock3 className="h-5 w-5 text-black" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-black/60">PICKUP TIME</p>
-            <p className="font-mono text-base font-bold text-black">{status === "COMPLETED" ? "COMPLETED" : ready ? "READY NOW" : `${formatTime(order.pickup_at)} N.`}</p>
-          </div>
-        </Card>
-        <Card className="flex items-center gap-4 border border-black/10 bg-white p-6">
-          <div className="flex h-12 w-12 items-center justify-center border border-black bg-stone-50">
-            <ReceiptText className="h-5 w-5 text-black" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-black/60">ORDER TOTAL</p>
-            <p className="font-mono text-base font-bold text-black">{formatMinor(order.total_amount_minor)}</p>
-          </div>
-        </Card>
+      <section className="grid grid-cols-2 gap-2.5">
+        <InfoTile icon={Clock3} label="เวลารับสินค้า" value={status === "COMPLETED" ? "รับแล้ว" : ready ? "พร้อมรับเลย" : `${formatTime(order.pickup_at)} น.`} />
+        <InfoTile icon={ReceiptText} label="ยอดรวม" value={formatMinor(order.total_amount_minor)} />
       </section>
 
-      <Card className="mt-4 border border-black/10 bg-white p-6">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-black/60">ITEMS</p>
-        <ul className="mt-3 space-y-2">
+      <section className="rounded-3xl border border-line bg-white p-4">
+        <p className="text-xs text-subtle">รายการ</p>
+        <ul className="mt-2 space-y-2">
           {order.items.map((item) => (
-            <li key={item.flavor_id} className="flex justify-between gap-3 text-xs uppercase tracking-wide">
-              <span className="font-bold text-black">{item.flavor_name} × {item.portions}</span>
-              <span className="font-mono text-black">{formatMinor(item.subtotal_minor)}</span>
+            <li key={item.flavor_id} className="flex justify-between gap-3 text-[15px]">
+              <span>{item.flavor_name} × {item.portions}</span>
+              <span className="tabular-nums">{formatMinor(item.subtotal_minor)}</span>
             </li>
           ))}
         </ul>
-      </Card>
+      </section>
 
-      {(status === "COMPLETED" || status === "CANCELLED") && (
-        <Button asChild className="mt-8 h-12 w-full">
-          <Link href="/">ORDER AGAIN</Link>
-        </Button>
+      {(status === "COMPLETED" || cancelled) && (
+        <Link href="/" className={cn(buttonVariants({ size: "lg" }), "w-full")}>สั่งอีกครั้ง</Link>
       )}
     </main>
   );

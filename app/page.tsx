@@ -1,114 +1,150 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowDownRight, ArrowRight, RefreshCw } from "lucide-react";
+import { ArrowRight, ChevronRight, WifiOff } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FlavorCard } from "@/components/FlavorCard";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCatalog } from "@/lib/api";
 import { cn, formatMinor } from "@/lib/utils";
-import pistachioHero from "@/public/hero/1.png";
 import strawberryHero from "@/public/hero/2.png";
-import vanillaHero from "@/public/hero/3.png";
-import heroTitle from "@/public/hero/title.png";
-import gelatoLineup from "@/public/hero/gelato-lineup.png";
 import { useCartStore } from "@/store/useCartStore";
+import type { MenuFlavor } from "@/types";
+
+const filters: Array<{ key: string; label: string; match: (flavor: MenuFlavor) => boolean }> = [
+  { key: "all", label: "ทั้งหมด", match: () => true },
+  { key: "available", label: "พร้อมขาย", match: (flavor) => flavor.active && flavor.available_portions > 0 },
+  { key: "nut-free", label: "ไม่มีถั่ว", match: (flavor) => !flavor.allergens.some((a) => a === "PEANUT" || a === "TREE_NUT") },
+  { key: "dairy-free", label: "ไม่มีนม", match: (flavor) => !flavor.allergens.includes("MILK") }
+];
+
+function StoreStatus() {
+  const orderId = useCartStore((state) => state.checkout?.orderId);
+  const content = (
+    <>
+      <span className="relative flex h-2 w-2 shrink-0">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{orderId ? "ติดตามคำสั่งซื้อล่าสุดของคุณ" : "เปิดรับออเดอร์อยู่ตอนนี้"}</span>
+        <span className="block text-xs text-subtle">{orderId ? "ดูเวลารับและหมายเลขคิว" : "สั่งล่วงหน้า แล้วมารับตามเวลาที่เลือก"}</span>
+      </span>
+      {orderId && <ChevronRight className="h-[18px] w-[18px] text-subtle" />}
+    </>
+  );
+  const className = "flex items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3.5";
+  return orderId ? <Link href={`/queue/${orderId}`} className={cn(className, "hover:border-ink/25")}>{content}</Link> : <div className={className}>{content}</div>;
+}
 
 export default function MenuPage() {
   const catalog = useCatalog();
   const items = useCartStore((state) => state.items);
+  const [filter, setFilter] = useState("all");
   const itemCount = items.reduce((total, item) => total + item.portions, 0);
   const total = items.reduce((sum, item) => sum + item.portions * item.unitPriceMinor, 0);
+  const active = filters.find((entry) => entry.key === filter) ?? filters[0];
+  const flavors = catalog.data?.filter(active.match) ?? [];
 
   return (
-    <main>
-      <section className="gelato-hero relative isolate min-h-[calc(100svh-4rem)] overflow-hidden border-b border-black sm:min-h-[calc(100svh-5rem)]" aria-labelledby="hero-heading">
-        <div className="relative z-30 mx-auto flex min-h-[calc(100svh-4rem)] max-w-[100rem] flex-col items-center px-4 pb-6 pt-8 sm:min-h-[calc(100svh-5rem)] sm:px-8 sm:pt-10 lg:pt-5">
-          <div className="flex w-full flex-col items-center text-center">
-            <p className="mb-1 text-[10px] font-black uppercase tracking-[0.32em] text-black sm:text-xs">
-              Handcrafted daily · Bangkok
-            </p>
-            <h1 id="hero-heading" className="relative w-[96vw] max-w-[72rem] sm:w-[88vw] xl:w-[76vw]">
-              <Image src={heroTitle} alt="Have Fun With Gelato" className="h-auto w-full object-contain" preload />
-            </h1>
-          </div>
-
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[22%] z-10 sm:top-[30%]" aria-hidden="true">
-            <div className="absolute bottom-[20%] -left-[18%] aspect-square w-[62vw] max-w-[46rem] -rotate-[12deg] sm:-bottom-[30%] sm:-left-[9%] sm:w-[51vw] md:-left-[5%] md:w-[46vw] xl:-bottom-[43%] xl:left-[2%] xl:w-[39vw]">
-              <Image src={pistachioHero} alt="" fill sizes="(max-width: 640px) 65vw, 42vw" className="object-contain" />
-            </div>
-            <div className="absolute bottom-[22%] left-1/2 z-20 aspect-square w-[76vw] max-w-[48rem] -translate-x-1/2 sm:-bottom-[30%] sm:w-[57vw] md:w-[49vw] xl:-bottom-[47%] xl:w-[40vw]">
-              <Image src={strawberryHero} alt="" fill sizes="(max-width: 640px) 79vw, 45vw" className="object-contain" preload />
-            </div>
-            <div className="absolute bottom-[19%] -right-[19%] aspect-square w-[62vw] max-w-[46rem] rotate-[11deg] sm:-bottom-[30%] sm:-right-[9%] sm:w-[51vw] md:-right-[5%] md:w-[46vw] xl:-bottom-[43%] xl:right-[1%] xl:w-[39vw]">
-              <Image src={vanillaHero} alt="" fill sizes="(max-width: 640px) 65vw, 42vw" className="object-contain" />
-            </div>
-          </div>
-
-          <div className="absolute bottom-5 left-4 right-4 z-40 sm:bottom-7 sm:left-auto sm:right-8">
-            <Link href="#collection" className={cn(buttonVariants({ size: "lg" }), "group h-auto w-full justify-between px-5 py-4 sm:w-auto sm:px-6 sm:py-5")}>
-              Shop the collection
-              <ArrowDownRight className="h-4 w-4 transition-transform group-hover:translate-x-1 group-hover:translate-y-1" />
-            </Link>
-          </div>
+    <main className="mx-auto max-w-3xl px-4 pb-32 pt-2">
+      <section className="bg-brand-gradient relative isolate overflow-hidden rounded-3xl px-6 pb-6 pt-7 sm:px-10 sm:pt-10" aria-labelledby="hero-heading">
+        <div className="pointer-events-none absolute -bottom-6 -right-8 z-0 h-[230px] w-[230px] sm:-bottom-10 sm:right-4 sm:h-[320px] sm:w-[320px]" aria-hidden="true">
+          <Image src={strawberryHero} alt="" fill sizes="(max-width: 640px) 230px, 320px" className="object-contain" priority />
+        </div>
+        <div className="relative z-10">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em]">Handcrafted daily · Bangkok</p>
+          <h1 id="hero-heading" className="mt-3 text-[40px] font-bold leading-[1.1] tracking-[-0.02em] sm:text-6xl">
+            Have fun
+            <br />
+            with gelato.
+          </h1>
+          <p className="mt-3 max-w-[16rem] text-[15px] leading-relaxed text-ink/75 sm:max-w-sm">เจลาโตทำสดใหม่ทุกวัน สั่งง่าย รับตามคิวแบบเรียลไทม์</p>
+          <Link href="#menu" className={cn(buttonVariants(), "mt-24 gap-3 pl-6 pr-5 sm:mt-16")}>
+            เลือกรสชาติ <ArrowRight className="h-[18px] w-[18px]" />
+          </Link>
         </div>
       </section>
 
-      <section id="collection" className="mx-auto max-w-7xl scroll-mt-24 px-6 pt-16 sm:pt-24" aria-label="Gelato Collection">
-        {catalog.isLoading ? (
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3" aria-label="กำลังโหลดเมนู">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <Skeleton key={index} className="h-[34rem] rounded-none bg-stone-200" />
+      <div className="mt-7">
+        <StoreStatus />
+      </div>
+
+      <section id="menu" className="mt-7 scroll-mt-20" aria-labelledby="menu-heading">
+        <div className="flex items-baseline justify-between">
+          <h2 id="menu-heading" className="text-[22px] font-semibold">เมนูวันนี้</h2>
+          {catalog.data && <span className="text-xs text-subtle">{flavors.length} รสชาติ</span>}
+        </div>
+
+        {!catalog.isError && (
+          <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]" role="group" aria-label="กรองเมนู">
+            {filters.map((entry) => (
+              <Chip key={entry.key} active={entry.key === filter} onClick={() => setFilter(entry.key)}>
+                {entry.label}
+              </Chip>
             ))}
           </div>
-        ) : catalog.isError ? (
-          <section className="border border-black bg-white p-12 text-center shadow-2xl">
-            <h2 className="text-2xl font-bold uppercase tracking-wider">UNABLE TO LOAD CATALOG</h2>
-            <p className="mt-2 text-sm text-black/60">กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง</p>
-            <Button className="mt-6 px-8 py-3" onClick={() => void catalog.refetch()}>
-              <RefreshCw className="mr-2 h-4 w-4" /> RETRY CONNECTION
-            </Button>
-          </section>
-        ) : (
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {catalog.data?.map((flavor) => <FlavorCard key={flavor.id} flavor={flavor} />)}
-          </div>
         )}
+
+        <div className="mt-4">
+          {catalog.isLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2" aria-label="กำลังโหลดเมนู">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="flex items-center gap-3.5 rounded-3xl border border-line bg-white p-3">
+                  <Skeleton className="h-[104px] w-[104px] shrink-0" />
+                  <div className="flex-1 space-y-2.5">
+                    <Skeleton className="h-3 w-28 rounded-full" />
+                    <Skeleton className="h-3 w-full rounded-full" />
+                    <Skeleton className="h-3 w-32 rounded-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : catalog.isError ? (
+            <section className="flex flex-col items-center rounded-3xl border border-line bg-white px-6 py-8 text-center">
+              <span className="grid h-14 w-14 place-items-center rounded-full bg-pink-soft">
+                <WifiOff className="h-6 w-6" strokeWidth={1.75} />
+              </span>
+              <h3 className="mt-3 text-[17px] font-semibold">โหลดเมนูไม่สำเร็จ</h3>
+              <p className="mt-1 text-[13px] text-subtle">กรุณาตรวจสอบการเชื่อมต่อ แล้วลองใหม่อีกครั้ง</p>
+              <Button variant="outline" size="sm" className="mt-4 h-11 w-40" onClick={() => void catalog.refetch()}>
+                ลองใหม่
+              </Button>
+            </section>
+          ) : flavors.length ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {flavors.map((flavor) => <FlavorCard key={flavor.id} flavor={flavor} />)}
+            </div>
+          ) : (
+            <p className="rounded-3xl border border-dashed border-line py-10 text-center text-sm text-subtle">ไม่มีเมนูที่ตรงกับตัวกรองนี้</p>
+          )}
+        </div>
       </section>
 
-      <section className="mt-16 overflow-hidden sm:mt-24" aria-label="Gelato selection">
-        <Image
-          src={gelatoLineup}
-          alt="Gelato ทั้งสามรสของ Gelatte"
-          className="h-auto w-full"
-          sizes="100vw"
-        />
-      </section>
+      <footer className="mt-12 text-center text-xs text-subtle">© Gelatte · Artisanal gelato, Bangkok</footer>
 
       <AnimatePresence>
         {itemCount > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 50 }}
+            initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed inset-x-0 bottom-8 z-40 mx-auto w-[calc(100%-3rem)] max-w-xl"
+            exit={{ opacity: 0, y: 40 }}
+            className="fixed inset-x-4 bottom-6 z-40 mx-auto max-w-[24rem] sm:max-w-md"
           >
-            <Button asChild size="lg" className="h-16 w-full justify-between px-6">
-              <Link href="/cart">
-                <span className="flex items-center gap-4 text-xs uppercase tracking-widest font-bold">
-                  <span className="flex h-7 w-7 items-center justify-center bg-white text-black font-mono font-black text-xs">
-                    {itemCount}
-                  </span>
-                  MY BAG · {itemCount} ITEMS
-                </span>
-                <span className="flex items-center gap-3 font-mono text-sm font-bold">
-                  {formatMinor(total)}
-                  <ArrowRight className="h-4 w-4" />
-                </span>
-              </Link>
-            </Button>
+            <Link href="/cart" className="flex h-[60px] items-center justify-between rounded-full bg-ink pl-2.5 pr-5 text-canvas shadow-float transition-transform active:scale-[0.99]">
+              <span className="flex items-center gap-3 text-sm font-medium">
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-pink text-sm font-bold text-ink">{itemCount}</span>
+                ตะกร้าของฉัน
+              </span>
+              <span className="flex items-center gap-2.5 text-[17px] font-semibold tabular-nums">
+                {formatMinor(total)}
+                <ArrowRight className="h-[18px] w-[18px]" />
+              </span>
+            </Link>
           </motion.div>
         )}
       </AnimatePresence>

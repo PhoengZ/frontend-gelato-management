@@ -23,15 +23,16 @@ describe("FlavorCard", () => {
 
   it("shows price, stock and allergens, and adds an available flavor", async () => {
     render(<FlavorCard flavor={baseFlavor} />);
-    expect(screen.getByText("Italy · Stock 2")).toBeInTheDocument();
-    expect(screen.getByText("Contains · Tree nut · Milk")).toBeInTheDocument();
+    expect(screen.getByText("Italy · เหลือ 2 สกู๊ป")).toBeInTheDocument();
+    expect(screen.getByText("มีส่วนผสม: ถั่วเปลือกแข็ง · นม")).toBeInTheDocument();
     expect(screen.getByText(/95/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "ADD TO SELECTION" }));
+    await userEvent.click(screen.getByRole("button", { name: "เพิ่ม Pistachio Verde ลงตะกร้า" }));
     expect(useCartStore.getState().items[0]).toMatchObject({ flavorId: baseFlavor.id, portions: 1, unitPriceMinor: 9500 });
   });
 
   it("disables ordering when out of stock", () => {
     render(<FlavorCard flavor={{ ...baseFlavor, available_portions: 0 }} />);
-    expect(screen.getByRole("button", { name: "SOLD OUT" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "หมดแล้ว" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /ลงตะกร้า/ })).not.toBeInTheDocument();
   });
 });

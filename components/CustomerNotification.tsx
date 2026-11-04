@@ -4,10 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell, BellRing, ChevronRight, Volume2, VolumeX, X } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useSession } from "@/lib/api";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import { useNotificationStore } from "@/store/useNotificationStore";
 import type { AppNotification, NotificationType } from "@/types";
 
@@ -44,28 +43,25 @@ function playNotificationSound() {
   }
 }
 
+/** Ink toast with a pink bell (Figma: Toast). */
 function showToast(notification: AppNotification) {
   const orderId = notification.data.order_id;
   toast.custom((id) => (
-    <div className="flex w-full items-start gap-3 rounded-none border border-black bg-white p-4 shadow-2xl">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-black bg-black text-white">
-        <BellRing className="h-5 w-5 animate-bounce text-white" />
-      </div>
+    <div className="flex w-[min(calc(100vw-2rem),22.375rem)] items-start gap-3 rounded-3xl bg-ink p-3.5 text-canvas shadow-float">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-pink text-ink">
+        <BellRing className="h-5 w-5" />
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-black uppercase tracking-wider text-black">{titles[notification.type]}</p>
-        <p className="mt-1 text-xs text-black/80">{notification.message}</p>
+        <p className="text-sm font-semibold">{titles[notification.type]}</p>
+        <p className="mt-0.5 text-xs text-canvas/70">{notification.message}</p>
         {orderId && (
-          <Link
-            href={`/queue/${orderId}`}
-            className="mt-2 inline-block text-[11px] font-bold uppercase tracking-wider text-black underline underline-offset-4 hover:opacity-70"
-            onClick={() => toast.dismiss(id)}
-          >
-            {notification.data.queue_number ? `ดูตั๋วคิว #${notification.data.queue_number}` : "ดูคำสั่งซื้อ"}
+          <Link href={`/queue/${orderId}`} className="mt-2 inline-flex items-center gap-0.5 text-xs font-semibold underline-offset-4 hover:underline" onClick={() => toast.dismiss(id)}>
+            {notification.data.queue_number ? `ดูตั๋วคิว #${notification.data.queue_number}` : "ดูคำสั่งซื้อ"} <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         )}
       </div>
-      <button onClick={() => toast.dismiss(id)} className="text-black/40 hover:text-black" aria-label="ปิดแจ้งเตือน">
-        <X className="h-4 w-4" />
+      <button onClick={() => toast.dismiss(id)} className="text-canvas/60 hover:text-canvas" aria-label="ปิดแจ้งเตือน">
+        <X className="h-[18px] w-[18px]" />
       </button>
     </div>
   ), { duration: 6000 });
@@ -136,82 +132,56 @@ export function CustomerNotification() {
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
         <button
-          className="relative flex h-9 w-9 items-center justify-center border border-black/20 bg-white transition-all hover:border-black hover:bg-stone-50"
-          aria-label="แจ้งเตือนสถานะคิว"
+          className="relative grid h-10 w-10 place-items-center rounded-full text-ink transition-colors hover:bg-ink/5"
+          aria-label={unreadCount ? `แจ้งเตือนสถานะคิว (${unreadCount} รายการใหม่)` : "แจ้งเตือนสถานะคิว"}
         >
-          <Bell className="h-4 w-4 text-black" />
-          {unreadCount > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center border border-black bg-black text-[9px] font-black text-white">
-              {unreadCount}
-            </span>
-          )}
+          <Bell className="h-[22px] w-[22px]" strokeWidth={1.75} />
+          {unreadCount > 0 && <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-canvas bg-pink" aria-hidden="true" />}
         </button>
       </SheetTrigger>
-      <SheetContent className="font-prompt border-l border-black bg-white p-6 sm:max-w-md">
-        <SheetHeader className="border-b border-black/10 pb-4 text-left">
-          <div className="flex items-center justify-between">
-            <SheetTitle className="text-lg font-black uppercase tracking-wider text-black">
-              NOTIFICATIONS
-            </SheetTitle>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setSoundMuted(!soundMuted)}
-                title={soundMuted ? "เปิดเสียงเตือน" : "ปิดเสียงเตือน"}
-              >
-                {soundMuted ? <VolumeX className="h-4 w-4 text-black/50" /> : <Volume2 className="h-4 w-4 text-black" />}
-              </Button>
-              {unreadCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 text-[10px] font-bold uppercase tracking-wider"
-                  onClick={markAllRead}
-                >
-                  MARK ALL READ
-                </Button>
-              )}
-            </div>
+      <SheetContent>
+        <SheetHeader className="flex flex-row items-center justify-between space-y-0">
+          <SheetTitle>การแจ้งเตือน</SheetTitle>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="grid h-9 w-9 place-items-center rounded-full hover:bg-ink/5"
+              onClick={() => setSoundMuted(!soundMuted)}
+              aria-label={soundMuted ? "เปิดเสียงเตือน" : "ปิดเสียงเตือน"}
+            >
+              {soundMuted ? <VolumeX className="h-5 w-5 text-subtle" /> : <Volume2 className="h-5 w-5" />}
+            </button>
+            {unreadCount > 0 && (
+              <button type="button" className="h-9 rounded-full px-3 text-sm font-medium hover:bg-ink/5" onClick={markAllRead}>
+                อ่านทั้งหมด
+              </button>
+            )}
           </div>
         </SheetHeader>
 
-        <div className="mt-4 space-y-3 overflow-y-auto max-h-[calc(100vh-10rem)]">
+        <div className="space-y-2.5">
           {notifications.length === 0 ? (
-            <div className="py-12 text-center text-xs uppercase tracking-widest text-black/40">
-              ไม่มีรายการแจ้งเตือน
+            <div className="py-12 text-center">
+              <Bell className="mx-auto h-8 w-8 text-line" />
+              <p className="mt-3 text-sm text-subtle">ยังไม่มีการแจ้งเตือน</p>
             </div>
           ) : (
             notifications.map((notif) => (
-              <div
-                key={notif.id}
-                className={`relative border p-4 transition-all ${
-                  notif.read ? "border-black/10 bg-white opacity-70" : "border-black bg-stone-50"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    {notif.data.queue_number && (
-                      <span className="font-mono text-xs font-black uppercase text-black">
-                        คิว #{notif.data.queue_number}
-                      </span>
-                    )}
-                    {!notif.read && (
-                      <span className="h-2 w-2 rounded-full bg-black" />
-                    )}
-                  </div>
-                  <span className="text-[10px] font-mono text-black/50">{formatDateTime(notif.occurred_at)}</span>
+              <div key={notif.id} className={cn("rounded-3xl border border-line p-4", notif.read ? "opacity-70" : "bg-white")}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    {!notif.read && <span className="h-2 w-2 rounded-full bg-pink" aria-label="ยังไม่ได้อ่าน" />}
+                    {titles[notif.type]}
+                  </p>
+                  <span className="shrink-0 text-xs text-subtle">{formatDateTime(notif.occurred_at)}</span>
                 </div>
-                <p className="mt-1.5 text-xs font-bold text-black">{titles[notif.type]}</p>
-                <p className="mt-0.5 text-xs text-black/70">{notif.message}</p>
+                <p className="mt-1 text-[13px] text-subtle">
+                  {notif.data.queue_number && `คิว #${notif.data.queue_number} · `}
+                  {notif.message}
+                </p>
                 {notif.data.order_id && (
-                  <Link
-                    href={`/queue/${notif.data.order_id}`}
-                    onClick={() => setIsOpen(false)}
-                    className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-black hover:underline"
-                  >
-                    ดูสถานะคำสั่งซื้อ <ChevronRight className="h-3 w-3" />
+                  <Link href={`/queue/${notif.data.order_id}`} onClick={() => setIsOpen(false)} className="mt-2 inline-flex items-center gap-0.5 text-sm font-medium hover:underline">
+                    ดูสถานะคำสั่งซื้อ <ChevronRight className="h-4 w-4" />
                   </Link>
                 )}
               </div>

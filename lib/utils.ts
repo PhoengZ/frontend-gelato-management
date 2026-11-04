@@ -48,10 +48,18 @@ export function pickupSlots(now = new Date()) {
 }
 
 export const allergenLabels: Record<Allergen, string> = {
-  MILK: "Milk",
-  EGG: "Egg",
-  PEANUT: "Peanut",
-  TREE_NUT: "Tree nut",
-  SOY: "Soy",
-  GLUTEN: "Gluten"
+  MILK: "นม",
+  EGG: "ไข่",
+  PEANUT: "ถั่วลิสง",
+  TREE_NUT: "ถั่วเปลือกแข็ง",
+  SOY: "ถั่วเหลือง",
+  GLUTEN: "กลูเตน"
 };
+
+/** Soft background behind a flavor photo, picked from its name (Figma: pistachio/pink/vanilla-soft). */
+export function flavorTint(name: string) {
+  const lower = name.toLowerCase();
+  if (/(pistachio|matcha|mint|green)/.test(lower)) return "bg-pistachio-soft";
+  if (/(vanilla|mango|lemon|banana|coconut|thai)/.test(lower)) return "bg-vanilla-soft";
+  return "bg-pink-soft";
+}

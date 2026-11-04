@@ -21,8 +21,14 @@ export default function CheckoutReturnPage() {
   }, [orderId, router]);
 
   return (
-    <main className="grid min-h-[70vh] place-items-center">
-      <Loader2 className="h-8 w-8 animate-spin text-black" />
+    <main className="grid min-h-[70svh] place-items-center px-8 text-center">
+      <div>
+        <span className="mx-auto grid h-[88px] w-[88px] place-items-center rounded-full bg-pink-soft">
+          <Loader2 className="h-10 w-10 animate-spin text-pink-strong" />
+        </span>
+        <p className="mt-4 text-[17px] font-semibold">กำลังตรวจสอบการชำระเงิน</p>
+        <p className="mt-1 text-sm text-subtle">กำลังพาคุณไปหน้าคำสั่งซื้อ…</p>
+      </div>
     </main>
   );
 }
