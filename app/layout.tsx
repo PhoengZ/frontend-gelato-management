@@ -1,25 +1,14 @@
-import type { Metadata } from "next";
-import localFont from "next/font/local";
-import { Prompt } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Anuphan } from "next/font/google";
 import { CookieConsent } from "@/components/CookieConsent";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
-const prompt = Prompt({
+const anuphan = Anuphan({
   subsets: ["latin", "thai"],
   weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-prompt",
-  display: "swap"
-});
-
-const than = localFont({
-  src: [
-    { path: "./fonts/Than-Light.otf", weight: "400", style: "normal" },
-    { path: "./fonts/Than-Medium.otf", weight: "500", style: "normal" },
-    { path: "./fonts/Than-Extrabold.otf", weight: "800", style: "normal" }
-  ],
-  variable: "--font-than",
+  variable: "--font-anuphan",
   display: "swap"
 });
 
@@ -32,10 +21,17 @@ export const metadata: Metadata = {
   }
 };
 
+export const viewport: Viewport = {
+  themeColor: "#FFFAF4",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover"
+};
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="th">
-      <body className={`${than.variable} ${prompt.variable} antialiased`}>
+    <html lang="th" className={anuphan.variable}>
+      <body className="font-sans antialiased">
         <Providers>
           <SiteHeader />
           {children}

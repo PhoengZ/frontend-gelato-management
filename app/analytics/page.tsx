@@ -1,27 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, BarChart3, Loader2, RefreshCw, TrendingUp } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { ArrowLeft, BarChart3, Loader2, RefreshCw, TrendingUp, Trash2 } from "lucide-react";
+import { PageHeader, Panel, StatTile } from "@/components/backoffice/PageParts";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { useAnalytics } from "@/lib/api";
-import { formatPrice } from "@/lib/utils";
+import { cn, formatPrice } from "@/lib/utils";
 import type { AnalyticsPeriod } from "@/types";
-import pistachioHero from "@/public/hero/1.png";
 
 const periods: Array<{ value: AnalyticsPeriod; label: string }> = [
-  { value: "1d", label: "1 day" },
-  { value: "1w", label: "7 days" },
-  { value: "1m", label: "30 days" },
-  { value: "6m", label: "6 months" }
+  { value: "1d", label: "1 วัน" },
+  { value: "1w", label: "7 วัน" },
+  { value: "1m", label: "30 วัน" },
+  { value: "6m", label: "6 เดือน" }
 ];
 
 function SalesTrendChart({ trend }: { trend: Array<{ date: string; label: string; revenue: number; orders: number }> }) {
   const width = 720;
-  const height = 250;
-  const padding = { left: 42, right: 20, top: 22, bottom: 42 };
+  const height = 260;
+  const padding = { left: 48, right: 16, top: 20, bottom: 36 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const maxRevenue = Math.max(1, ...trend.map((item) => item.revenue));
@@ -29,21 +27,35 @@ function SalesTrendChart({ trend }: { trend: Array<{ date: string; label: string
   const y = (revenue: number) => padding.top + chartHeight - (revenue / maxRevenue) * chartHeight;
   const points = trend.map((item, index) => `${x(index)},${y(item.revenue)}`).join(" ");
   const areaPoints = `${padding.left},${padding.top + chartHeight} ${points} ${padding.left + chartWidth},${padding.top + chartHeight}`;
+  // Thin out x labels on long periods so they never collide.
+  const labelEvery = Math.max(1, Math.ceil(trend.length / 8));
 
   return (
-    <div className="mt-6 overflow-x-auto" role="img" aria-label="กราฟรายได้ย้อนหลัง">
-      <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[620px]" aria-hidden="true">
-        <defs><linearGradient id="sales-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#f79bad" stopOpacity="0.55" /><stop offset="1" stopColor="#f79bad" stopOpacity="0.04" /></linearGradient></defs>
+    <div className="overflow-x-auto" role="img" aria-label="กราฟรายได้ย้อนหลัง">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full min-w-[560px]" aria-hidden="true">
+        <defs>
+          <linearGradient id="sales-area" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#F88397" stopOpacity="0.35" />
+            <stop offset="1" stopColor="#F88397" stopOpacity="0" />
+          </linearGradient>
+        </defs>
         {[0, 0.5, 1].map((ratio) => {
           const gridY = padding.top + chartHeight * ratio;
-          return <g key={ratio}><line x1={padding.left} x2={padding.left + chartWidth} y1={gridY} y2={gridY} stroke="rgba(0,0,0,.12)" strokeDasharray="4 5" /><text x={padding.left - 8} y={gridY + 4} textAnchor="end" fontSize="9" fill="rgba(0,0,0,.5)">{Math.round(maxRevenue * (1 - ratio))}</text></g>;
+          return (
+            <g key={ratio}>
+              <line x1={padding.left} x2={padding.left + chartWidth} y1={gridY} y2={gridY} stroke="#EFE6E2" strokeDasharray={ratio === 1 ? undefined : "4 5"} />
+              <text x={padding.left - 10} y={gridY + 4} textAnchor="end" fontSize="11" fill="#6B6266">{Math.round(maxRevenue * (1 - ratio)).toLocaleString("th-TH")}</text>
+            </g>
+          );
         })}
         <polygon points={areaPoints} fill="url(#sales-area)" />
-        <polyline points={points} fill="none" stroke="#171717" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+        <polyline points={points} fill="none" stroke="#141012" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
         {trend.map((item, index) => (
           <g key={item.date}>
-            <circle cx={x(index)} cy={y(item.revenue)} r="5" fill="#f79bad" stroke="#171717" strokeWidth="2"><title>{item.label}: {formatPrice(item.revenue)} · {item.orders} orders</title></circle>
-            <text x={x(index)} y={height - 14} textAnchor="middle" fontSize="10" fontWeight="700" fill="rgba(0,0,0,.65)">{item.label}</text>
+            <circle cx={x(index)} cy={y(item.revenue)} r="4.5" fill="#FFFFFF" stroke="#141012" strokeWidth="2">
+              <title>{item.label}: {formatPrice(item.revenue)} · {item.orders} orders</title>
+            </circle>
+            {index % labelEvery === 0 && <text x={x(index)} y={height - 10} textAnchor="middle" fontSize="11" fill="#6B6266">{item.label}</text>}
           </g>
         ))}
       </svg>
@@ -51,146 +63,145 @@ function SalesTrendChart({ trend }: { trend: Array<{ date: string; label: string
   );
 }
 
+function BarList({ rows, max, color, valueLabel, empty }: { rows: Array<{ id: string; name: string; value: number; detail: string }>; max: number; color: string; valueLabel?: string; empty: string }) {
+  if (!rows.length) return <p className="py-12 text-center text-sm text-subtle">{empty}</p>;
+  return (
+    <ul className="space-y-5">
+      {rows.map((row) => (
+        <li key={row.id}>
+          <div className="flex justify-between gap-4 text-sm">
+            <span className="font-medium">{row.name}</span>
+            <span className="tabular-nums text-subtle">{row.detail}{valueLabel}</span>
+          </div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-line">
+            <div className={cn("h-full rounded-full", color)} style={{ width: `${(row.value / max) * 100}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<AnalyticsPeriod>("1w");
   const analytics = useAnalytics(period);
   const periodLabel = periods.find((item) => item.value === period)?.label ?? period;
-  if (analytics.isLoading) return <main className="grid min-h-[70vh] place-items-center"><Loader2 className="h-8 w-8 animate-spin" /></main>;
-  if (analytics.isError || !analytics.data) return <main className="mx-auto max-w-xl p-12 text-center"><h1 className="text-2xl font-bold">โหลดรายงานไม่สำเร็จ</h1><Button className="mt-5" onClick={() => void analytics.refetch()}>RETRY</Button></main>;
+
+  const periodControl = (
+    <div className="flex h-12 items-center rounded-full border border-line bg-white p-1" role="radiogroup" aria-label="ช่วงเวลา">
+      {periods.map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          role="radio"
+          aria-checked={item.value === period}
+          onClick={() => setPeriod(item.value)}
+          className={cn("h-10 rounded-full px-4 text-sm transition-colors", item.value === period ? "bg-ink font-semibold text-canvas" : "text-subtle hover:text-ink")}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const header = (
+    <PageHeader
+      title="ยอดขายและของเสีย"
+      description="ภาพรวมยอดขายและแนวโน้มของเสียจากข้อมูลปัจจุบัน"
+      actions={
+        <>
+          {periodControl}
+          <Link href="/manager" className={buttonVariants({ variant: "outline" })}><ArrowLeft className="h-4 w-4" /> คลังสินค้า</Link>
+          <Button variant="outline" size="icon" className="h-12 w-12" onClick={() => void analytics.refetch()} disabled={analytics.isFetching} aria-label="รีเฟรช">
+            <RefreshCw className={cn("h-4 w-4", analytics.isFetching && "animate-spin")} />
+          </Button>
+        </>
+      }
+    />
+  );
+
+  if (analytics.isLoading) {
+    return <main className="mx-auto max-w-[76rem] space-y-7 px-6 pb-12 pt-8 lg:px-10">{header}<div className="grid min-h-[50vh] place-items-center"><Loader2 className="h-8 w-8 animate-spin text-pink-strong" /></div></main>;
+  }
+  if (analytics.isError || !analytics.data) {
+    return (
+      <main className="mx-auto max-w-[76rem] space-y-7 px-6 pb-12 pt-8 lg:px-10">
+        {header}
+        <section className="flex flex-col items-center rounded-3xl border border-line bg-white px-6 py-16 text-center">
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-pink-soft"><RefreshCw className="h-6 w-6 text-pink-strong" /></span>
+          <h2 className="mt-3 text-[17px] font-semibold">โหลดรายงานไม่สำเร็จ</h2>
+          <Button className="mt-5 w-40" onClick={() => void analytics.refetch()}>ลองใหม่</Button>
+        </section>
+      </main>
+    );
+  }
+
   const data = analytics.data;
   const maxSales = Math.max(1, ...data.salesByFlavor.map((item) => item.portions));
   const maxWaste = Math.max(1, ...data.wasteByFlavor.map((item) => item.portions));
-  const metrics = [
-    ["Gross sales", formatPrice(data.totalRevenue)], ["Orders", String(data.totalOrders)], ["Scoops sold", String(data.totalScoops)], ["Waste portions", String(data.totalWaste)]
-  ];
   const averageOrder = data.totalOrders ? data.totalRevenue / data.totalOrders : 0;
   const averageScoops = data.totalOrders ? data.totalScoops / data.totalOrders : 0;
   const wasteRate = data.totalScoops + data.totalWaste ? (data.totalWaste / (data.totalScoops + data.totalWaste)) * 100 : 0;
+  const trendTotal = data.salesTrend.reduce((sum, day) => sum + day.revenue, 0);
 
   return (
-    <main className="w-full pb-24">
-      {/* Pink Hero Banner for Analytics Header - Full Width */}
-      <div className="relative w-full overflow-hidden border-b border-black bg-[#f79bad] px-6 py-8 sm:px-10 sm:py-10">
-        <div className="mx-auto flex max-w-7xl flex-col justify-between gap-6 sm:flex-row sm:items-end">
-          <div className="relative z-10 max-w-2xl">
-            <div className="mb-3 inline-flex items-center gap-2 border border-black bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-black">
-              MANAGER ANALYTICS
-            </div>
-            <h1 className="text-3xl font-black uppercase tracking-tight text-[#32111c] sm:text-5xl">
-              SALES & WASTE
-            </h1>
-            <p className="mt-2 text-xs font-bold uppercase tracking-wider text-[#631c31]">
-              ภาพรวมยอดขายและ Waste Trends จากข้อมูลปัจจุบัน
-            </p>
-          </div>
-          <div className="relative z-10 flex flex-wrap gap-3">
-            <select
-              value={period}
-              onChange={(event) => setPeriod(event.target.value as AnalyticsPeriod)}
-              aria-label="ช่วงเวลา"
-              className="h-10 border border-black bg-white px-3 text-xs font-bold uppercase tracking-wider text-black"
-            >
-              {periods.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-            </select>
-            <Button asChild variant="outline" className="border-black bg-white text-black hover:bg-stone-100">
-              <Link href="/manager"><ArrowLeft className="mr-2 h-4 w-4" /> INVENTORY</Link>
-            </Button>
-            <Button
-              className="border-black bg-black text-white hover:bg-stone-800"
-              onClick={() => void analytics.refetch()}
-              disabled={analytics.isFetching}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${analytics.isFetching ? "animate-spin" : ""}`} /> REFRESH
-            </Button>
-          </div>
-        </div>
+    <main className="mx-auto max-w-[76rem] space-y-7 px-6 pb-12 pt-8 lg:px-10">
+      {header}
 
-        {/* Overlayed Gelato Image */}
-        <div className="pointer-events-none absolute -bottom-6 right-4 z-0 sm:right-16 md:right-28">
-          <Image
-            src={pistachioHero}
-            alt="Pistachio gelato"
-            width={176}
-            height={176}
-            className="h-32 w-32 object-contain sm:h-44 sm:w-44"
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="ตัวชี้วัดหลัก">
+        <StatTile label="ยอดขายรวม" value={formatPrice(data.totalRevenue)} note={periodLabel} />
+        <StatTile label="จำนวนออเดอร์" value={data.totalOrders.toLocaleString("th-TH")} note={`เฉลี่ย ${formatPrice(averageOrder)} / ออเดอร์`} />
+        <StatTile label="สกู๊ปที่ขายได้" value={data.totalScoops.toLocaleString("th-TH")} note={`${averageScoops.toFixed(1)} สกู๊ป / ออเดอร์`} />
+        <StatTile label="ของเสีย" value={`${data.totalWaste} สกู๊ป`} note={`อัตราของเสีย ${wasteRate.toFixed(1)}%`} tone="pink" />
+      </section>
+
+      <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]">
+        <Panel
+          title={`แนวโน้มรายได้ · ${periodLabel}`}
+          description="รายได้รวมรายวัน (บาท)"
+          icon={<TrendingUp className="h-5 w-5" />}
+          actions={<span className="rounded-full bg-pink-soft px-3 py-1.5 text-sm font-semibold tabular-nums">{formatPrice(trendTotal)}</span>}
+        >
+          <SalesTrendChart trend={data.salesTrend} />
+        </Panel>
+
+        <section className="rounded-3xl bg-ink p-6 text-canvas">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-pink">Performance</p>
+          <h2 className="mt-1 text-[17px] font-semibold">ประสิทธิภาพร้าน</h2>
+          <dl className="mt-4 divide-y divide-canvas/15">
+            {[
+              ["มูลค่าเฉลี่ยต่อออเดอร์", formatPrice(averageOrder)],
+              ["สกู๊ปต่อออเดอร์", averageScoops.toFixed(1)],
+              ["อัตราของเสีย", `${wasteRate.toFixed(1)}%`],
+              ["วันที่มียอดขาย", `${data.salesTrend.filter((day) => day.orders > 0).length} / ${data.salesTrend.length}`]
+            ].map(([label, value], index) => (
+              <div key={label} className="flex items-end justify-between py-3.5">
+                <dt className="text-sm text-canvas/65">{label}</dt>
+                <dd className={cn("text-xl font-semibold tabular-nums", index === 2 && "text-pink")}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      </section>
+
+      <section className="grid items-start gap-5 lg:grid-cols-2">
+        <Panel title="ยอดขายตามรสชาติ" description="จำนวนสกู๊ปและรายได้" icon={<BarChart3 className="h-5 w-5" />}>
+          <BarList
+            rows={data.salesByFlavor.map((item) => ({ id: item.flavorId, name: item.flavorName, value: item.portions, detail: `${item.portions} สกู๊ป · ${formatPrice(item.revenue)}` }))}
+            max={maxSales}
+            color="bg-ink"
+            empty="ยังไม่มีข้อมูลยอดขาย"
           />
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-7xl px-6 pt-8">
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {metrics.map(([label, value], index) => (
-            <Card key={label} className={`${index === 3 ? "bg-[#f79bad]" : "bg-white text-black"} border border-black p-6 shadow-none`}>
-              <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">{label}</p>
-              <p className="mt-3 font-mono text-3xl font-bold">{value}</p>
-            </Card>
-          ))}
-        </section>
-
-        <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)]">
-          <Card className="border border-black bg-white p-6 shadow-none sm:p-8">
-            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
-              <div className="flex items-center gap-3"><TrendingUp className="h-5 w-5 text-[#c14f76]" /><div><h2 className="text-lg font-bold uppercase tracking-wide">{periodLabel} revenue trend</h2><p className="mt-1 text-xs text-black/45">รายได้รวมรายวัน · บาท</p></div></div>
-              <span className="border border-black bg-[#fff3f7] px-3 py-1.5 font-mono text-xs font-bold">{formatPrice(data.salesTrend.reduce((sum, day) => sum + day.revenue, 0))}</span>
-            </div>
-            <SalesTrendChart trend={data.salesTrend} />
-          </Card>
-
-          <Card className="border border-black bg-[#21171c] p-6 text-white shadow-none sm:p-8">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#f79bad]">Performance statistics</p>
-            <h2 className="mt-2 text-lg font-bold uppercase tracking-wide">Store efficiency</h2>
-            <dl className="mt-6 divide-y divide-white/15">
-              <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Avg. order value</dt><dd className="font-mono text-xl font-bold">{formatPrice(averageOrder)}</dd></div>
-              <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Scoops / order</dt><dd className="font-mono text-xl font-bold">{averageScoops.toFixed(1)}</dd></div>
-              <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Waste rate</dt><dd className="font-mono text-xl font-bold text-[#f79bad]">{wasteRate.toFixed(1)}%</dd></div>
-              <div className="flex items-end justify-between py-4"><dt className="text-xs uppercase tracking-wider text-white/55">Active sales days</dt><dd className="font-mono text-xl font-bold">{data.salesTrend.filter((day) => day.orders > 0).length} / {data.salesTrend.length}</dd></div>
-            </dl>
-          </Card>
-        </section>
-
-        <section className="mt-8 grid gap-8 lg:grid-cols-2">
-          <Card className="border border-black bg-white p-6 shadow-none sm:p-8">
-            <div className="flex items-center gap-3">
-              <BarChart3 className="h-5 w-5 text-[#c14f76]" />
-              <h2 className="text-lg font-bold uppercase tracking-wide">Sales by flavor</h2>
-            </div>
-            <div className="mt-8 space-y-6">
-              {data.salesByFlavor.map((item) => (
-                <div key={item.flavorId}>
-                  <div className="flex justify-between gap-4 text-xs">
-                    <span className="font-bold uppercase">{item.flavorName}</span>
-                    <span className="font-mono">{item.portions} · {formatPrice(item.revenue)}</span>
-                  </div>
-                  <div className="mt-2 h-3 bg-black/10">
-                    <div className="h-full bg-black" style={{ width: `${(item.portions / maxSales) * 100}%` }} />
-                  </div>
-                </div>
-              ))}
-              {!data.salesByFlavor.length && <p className="py-12 text-center text-sm text-black/45">ยังไม่มีข้อมูลยอดขาย</p>}
-            </div>
-          </Card>
-          <Card className="border border-black bg-[#fff3f7] p-6 shadow-none sm:p-8">
-            <div className="flex items-center gap-3">
-              <BarChart3 className="h-5 w-5 text-[#c14f76]" />
-              <h2 className="text-lg font-bold uppercase tracking-wide">Waste trends</h2>
-            </div>
-            <div className="mt-8 space-y-6">
-              {data.wasteByFlavor.map((item) => (
-                <div key={item.flavorId}>
-                  <div className="flex justify-between gap-4 text-xs">
-                    <span className="font-bold uppercase">{item.flavorName}</span>
-                    <span className="font-mono">{item.portions} portions</span>
-                  </div>
-                  <div className="mt-2 h-3 bg-black/10">
-                    <div className="h-full bg-[#e66f98]" style={{ width: `${(item.portions / maxWaste) * 100}%` }} />
-                  </div>
-                </div>
-              ))}
-              {!data.wasteByFlavor.length && <p className="py-12 text-center text-sm text-black/45">ยังไม่มีการบันทึกของเสีย</p>}
-            </div>
-          </Card>
-        </section>
-      </div>
+        </Panel>
+        <Panel title="แนวโน้มของเสีย" description="จำนวนสกู๊ปที่ตัดทิ้งตามรสชาติ" icon={<Trash2 className="h-5 w-5 text-pink-strong" />}>
+          <BarList
+            rows={data.wasteByFlavor.map((item) => ({ id: item.flavorId, name: item.flavorName, value: item.portions, detail: `${item.portions} สกู๊ป` }))}
+            max={maxWaste}
+            color="bg-pink"
+            empty="ยังไม่มีการบันทึกของเสีย"
+          />
+        </Panel>
+      </section>
     </main>
   );
 }

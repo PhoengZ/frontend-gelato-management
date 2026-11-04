@@ -1,81 +1,73 @@
 "use client";
 
-import Image from "next/image";
-import { CheckCheck, Clock3, Loader2, PackageCheck, RefreshCw, ShoppingBag } from "lucide-react";
+import { Check, Clock3, Loader2, RefreshCw, ShoppingBag, BellRing } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
+import { Eyebrow, PageHeader, StatTile } from "@/components/backoffice/PageParts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { useFulfillments, useUpdateFulfillmentStatus } from "@/lib/api";
-import { formatTime } from "@/lib/utils";
+import { cn, formatTime } from "@/lib/utils";
 import type { Fulfillment, UpdateFulfillmentStatusRequest } from "@/types";
-import vanillaGelato from "@/public/hero/3.png";
 
 type NextStatus = UpdateFulfillmentStatusRequest["status"];
 
-function OrderCard({ order, onUpdate, updating }: { order: Fulfillment; onUpdate: (orderId: string, status: NextStatus) => void; updating: boolean }) {
+/** Figma: OrderTicket — Preparing / Ready. */
+function OrderTicket({ order, onUpdate, updating }: { order: Fulfillment; onUpdate: (orderId: string, status: NextStatus) => void; updating: boolean }) {
   const isReady = order.status === "READY_FOR_PICKUP";
   const nextStatus: NextStatus = isReady ? "PICKED_UP" : "READY_FOR_PICKUP";
   return (
-    <motion.article layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }}>
-      <Card className="border border-black/10 bg-white p-6 transition-all hover:border-black">
+    <motion.article layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}>
+      <div className={cn("space-y-3.5 rounded-3xl border p-4", isReady ? "border-pink bg-pink-soft" : "border-line bg-white")}>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-black/60">TICKET NO.</p>
-            <h3 className="mt-1 font-mono text-4xl font-black text-black">#{order.queue_number}</h3>
+            <p className="text-xs text-subtle">คิว</p>
+            <h3 className="text-[34px] font-bold leading-none tracking-[-0.02em]">#{order.queue_number}</h3>
           </div>
-          <Badge className={isReady ? "border border-black bg-black text-white px-3 py-1 text-[10px] uppercase tracking-widest" : "border border-black/20 bg-stone-100 text-black px-3 py-1 text-[10px] uppercase tracking-widest"}>
-            {isReady ? "READY FOR PICKUP" : "PREPARING"}
-          </Badge>
+          <Badge tone={isReady ? "ink" : "neutral"}>{isReady ? "พร้อมรับ" : "กำลังเตรียม"}</Badge>
         </div>
-        <div className="mt-5 space-y-2 border-y border-black/10 py-4">
+        <ul className="space-y-1 text-[15px]">
           {order.items.map((item) => (
-            <div key={item.flavor_id} className="flex justify-between gap-3 text-xs uppercase tracking-wide">
-              <span className="font-bold text-black">{item.flavor_name}</span>
-              <span className="shrink-0 font-mono font-black text-black">× {item.portions}</span>
-            </div>
+            <li key={item.flavor_id} className="flex justify-between gap-3">
+              <span>{item.flavor_name}</span>
+              <span className="font-semibold tabular-nums">× {item.portions}</span>
+            </li>
           ))}
-        </div>
-        <div className="mt-5 flex items-center justify-between gap-4">
-          <span className="flex items-center gap-1.5 font-mono text-[11px] font-medium text-black/60">
-            <Clock3 className="h-3.5 w-3.5 text-black" /> PICKUP {formatTime(order.pickup_at)} N.
+        </ul>
+        <div className={cn("flex items-center justify-between gap-3 border-t pt-3.5", isReady ? "border-pink" : "border-line")}>
+          <span className="flex items-center gap-1.5 text-sm font-medium text-subtle">
+            <Clock3 className="h-4 w-4" /> รับ {formatTime(order.pickup_at)} น.
           </span>
-          <Button 
-            onClick={() => onUpdate(order.order_id, nextStatus)} 
-            disabled={updating} 
-            variant={isReady ? "outline" : "default"}
-          >
-            {updating ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : isReady ? <CheckCheck className="mr-2 h-3.5 w-3.5" /> : <PackageCheck className="mr-2 h-3.5 w-3.5" />}
-            {isReady ? "COMPLETE ORDER" : "MARK READY"}
+          <Button size="sm" variant={isReady ? "outline" : "default"} className={cn(isReady && "border-ink")} onClick={() => onUpdate(order.order_id, nextStatus)} disabled={updating}>
+            {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : isReady ? <Check className="h-4 w-4" /> : <BellRing className="h-4 w-4" />}
+            {isReady ? "ส่งมอบแล้ว" : "พร้อมเสิร์ฟ"}
           </Button>
         </div>
-      </Card>
+      </div>
     </motion.article>
   );
 }
 
-function OrderColumn({ title, description, orders, onUpdate, updatingId }: { title: string; description: string; orders: Fulfillment[]; onUpdate: (orderId: string, status: NextStatus) => void; updatingId?: string }) {
+function OrderColumn({ title, description, orders, onUpdate, updatingId, ink = false }: { title: string; description: string; orders: Fulfillment[]; onUpdate: (orderId: string, status: NextStatus) => void; updatingId?: string; ink?: boolean }) {
   return (
-    <section className="min-h-[34rem] border border-black bg-white p-6">
-      <div className="mb-6 flex items-center justify-between gap-4 border-b border-black/10 pb-4">
+    <section className="rounded-3xl border border-line bg-white p-5" aria-label={title}>
+      <div className="mb-4 flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold uppercase tracking-wider text-black">{title}</h2>
-          <p className="text-xs uppercase tracking-widest text-black/60">{description}</p>
+          <h2 className="text-[17px] font-semibold">{title}</h2>
+          <p className="text-xs text-subtle">{description}</p>
         </div>
-        <span className="flex h-8 min-w-8 items-center justify-center border border-black bg-black font-mono text-xs font-black text-white">
-          {orders.length}
-        </span>
+        <span className={cn("grid h-9 min-w-9 place-items-center rounded-full px-2 text-sm font-semibold", ink ? "bg-ink text-canvas" : "bg-line")}>{orders.length}</span>
       </div>
-      <div className="space-y-4">
+      <div className="space-y-3">
         <AnimatePresence>
-          {orders.map((order) => <OrderCard key={order.order_id} order={order} onUpdate={onUpdate} updating={updatingId === order.order_id} />)}
+          {orders.map((order) => <OrderTicket key={order.order_id} order={order} onUpdate={onUpdate} updating={updatingId === order.order_id} />)}
         </AnimatePresence>
         {!orders.length && (
-          <div className="grid min-h-64 place-items-center border border-dashed border-black/20 text-center text-black/40">
+          <div className="grid min-h-72 place-items-center rounded-2xl border-[1.5px] border-dashed border-line text-center">
             <div>
-              <ShoppingBag className="mx-auto h-8 w-8 opacity-30" />
-              <p className="mt-3 text-xs font-bold uppercase tracking-widest">NO ORDERS IN QUEUE</p>
+              <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-canvas"><ShoppingBag className="h-6 w-6 text-subtle" strokeWidth={1.75} /></span>
+              <p className="mt-3 text-[17px] font-semibold">ยังไม่มีออเดอร์ในคิว</p>
+              <p className="mt-1 text-[13px] text-subtle">ออเดอร์ใหม่จะแสดงที่นี่อัตโนมัติ</p>
             </div>
           </div>
         )}
@@ -89,6 +81,8 @@ export default function StaffPage() {
   const updateStatus = useUpdateFulfillmentStatus();
   const preparing = orders.data?.filter((order) => order.status === "PREPARING") ?? [];
   const ready = orders.data?.filter((order) => order.status === "READY_FOR_PICKUP") ?? [];
+  const scoops = [...preparing, ...ready].reduce((sum, order) => sum + order.items.reduce((s, item) => s + item.portions, 0), 0);
+  const nextPickup = [...preparing].sort((a, b) => a.pickup_at.localeCompare(b.pickup_at))[0];
 
   const handleUpdate = (orderId: string, status: NextStatus) => {
     updateStatus.mutate(
@@ -99,63 +93,44 @@ export default function StaffPage() {
       }
     );
   };
+  const updatingId = updateStatus.isPending ? updateStatus.variables?.orderId : undefined;
 
   return (
-    <main className="w-full pb-24">
-      {/* Pink Hero Banner for Kitchen Header - Full Width */}
-      <div className="relative w-full overflow-hidden border-b border-black bg-[#f79bad] px-6 py-8 sm:px-10 sm:py-10">
-        <div className="mx-auto flex max-w-7xl flex-col justify-between gap-6 sm:flex-row sm:items-end">
-          <div className="relative z-10 max-w-2xl">
-            <div className="mb-3 inline-flex items-center gap-2 border border-black bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-black">
-              <span className="h-1.5 w-1.5 animate-pulse bg-black" /> LIVE KITCHEN FEED — 2S REFRESH
-            </div>
-            <h1 className="text-3xl font-black uppercase tracking-tight text-[#32111c] sm:text-5xl">
-              KITCHEN FULFILLMENT
-            </h1>
-            <p className="mt-2 text-xs font-bold uppercase tracking-wider text-[#631c31]">
-              จัดการลำดับออเดอร์และส่งสัญญาณแจ้งเตือนลูกค้ารับสินค้า
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            className="relative z-10 border-black bg-white text-black hover:bg-stone-100"
-            onClick={() => void orders.refetch()}
-            disabled={orders.isFetching}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${orders.isFetching ? "animate-spin" : ""}`} /> REFRESH
+    <main className="mx-auto max-w-[76rem] space-y-7 px-6 pb-12 pt-8 lg:px-10">
+      <PageHeader
+        eyebrow={<Eyebrow live>LIVE · อัปเดตทุก 2 วินาที</Eyebrow>}
+        title="จัดการออเดอร์ในครัว"
+        description="ลำดับออเดอร์และส่งสัญญาณแจ้งลูกค้าเมื่อพร้อมรับ"
+        actions={
+          <Button variant="outline" onClick={() => void orders.refetch()} disabled={orders.isFetching}>
+            <RefreshCw className={cn("h-4 w-4", orders.isFetching && "animate-spin")} /> รีเฟรช
           </Button>
-        </div>
+        }
+      />
 
-        {/* Overlayed Gelato Image */}
-        <div className="pointer-events-none absolute -bottom-6 right-4 z-0 sm:right-16 md:right-28">
-          <Image
-            src={vanillaGelato}
-            alt="Gelato decor"
-            width={176}
-            height={176}
-            className="h-32 w-32 object-contain sm:h-44 sm:w-44"
-          />
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-7xl px-6 pt-8">
-        {orders.isLoading ? (
-          <div className="grid min-h-[55vh] place-items-center">
-            <Loader2 className="h-8 w-8 animate-spin text-black" />
+      {orders.isLoading ? (
+        <div className="grid min-h-[50vh] place-items-center"><Loader2 className="h-8 w-8 animate-spin text-pink-strong" /></div>
+      ) : orders.isError ? (
+        <section className="flex flex-col items-center rounded-3xl border border-line bg-white px-6 py-16 text-center">
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-pink-soft"><RefreshCw className="h-6 w-6 text-pink-strong" /></span>
+          <h2 className="mt-3 text-[17px] font-semibold">โหลดออเดอร์ไม่สำเร็จ</h2>
+          <p className="mt-1 text-[13px] text-subtle">กรุณาตรวจสอบการเชื่อมต่อ API Gateway แล้วลองใหม่</p>
+          <Button className="mt-5 w-40" onClick={() => void orders.refetch()}>ลองใหม่</Button>
+        </section>
+      ) : (
+        <>
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="สรุปคิว">
+            <StatTile label="กำลังเตรียม" value={String(preparing.length)} note="ออเดอร์ในครัว" />
+            <StatTile label="พร้อมรับ" value={String(ready.length)} note="รอลูกค้ามารับ" tone="pink" />
+            <StatTile label="สกู๊ปในคิว" value={String(scoops)} note="รวมทุกออเดอร์" />
+            <StatTile label="รับถัดไป" value={nextPickup ? `${formatTime(nextPickup.pickup_at)} น.` : "—"} note={nextPickup ? `คิว #${nextPickup.queue_number}` : "ไม่มีออเดอร์ค้าง"} tone="ink" />
+          </section>
+          <div className="grid items-start gap-5 lg:grid-cols-2">
+            <OrderColumn title="กำลังเตรียม" description="คิวที่กำลังทำ" orders={preparing} onUpdate={handleUpdate} updatingId={updatingId} />
+            <OrderColumn title="พร้อมรับ" description="รอลูกค้ามารับที่เคาน์เตอร์" orders={ready} onUpdate={handleUpdate} updatingId={updatingId} ink />
           </div>
-        ) : orders.isError ? (
-          <Card className="border border-black bg-white p-12 text-center">
-            <h2 className="text-xl font-bold uppercase tracking-wider">FAILED TO LOAD ORDERS</h2>
-            <p className="mt-2 text-xs uppercase tracking-widest text-black/60">กรุณาตรวจสอบการเชื่อมต่อ API Gateway</p>
-            <Button className="mt-6" onClick={() => void orders.refetch()}>RETRY</Button>
-          </Card>
-        ) : (
-          <div className="grid gap-8 lg:grid-cols-2">
-            <OrderColumn title="IN PREPARATION" description="QUEUE IN PROGRESS" orders={preparing} onUpdate={handleUpdate} updatingId={updateStatus.isPending ? updateStatus.variables?.orderId : undefined} />
-            <OrderColumn title="READY FOR PICKUP" description="AWAITING COUNTER COLLECT" orders={ready} onUpdate={handleUpdate} updatingId={updateStatus.isPending ? updateStatus.variables?.orderId : undefined} />
-          </div>
-        )}
-      </div>
+        </>
+      )}
     </main>
   );
 }

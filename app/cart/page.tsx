@@ -4,18 +4,21 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Clock3, CreditCard, Loader2, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { AlertTriangle, Clock3, Loader2, Lock, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiClientError, useCatalog, useCreateOrder, useSession } from "@/lib/api";
-import { formatMinor, formatTime, pickupSlots } from "@/lib/utils";
+import { cn, flavorTint, formatMinor, formatTime, pickupSlots } from "@/lib/utils";
 import { useCartStore } from "@/store/useCartStore";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { Stepper } from "@/components/ui/stepper";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import vanillaGelato from "@/public/hero/3.png";
+import emptyBag from "@/public/illustrations/empty-bag.png";
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -25,21 +28,24 @@ import {
 
 const stockConflictCodes = ["DEPENDENCY_CONFLICT", "FLAVOR_INACTIVE", "INSUFFICIENT_STOCK"];
 
-function CartPromoBanner() {
+function CartPromo() {
   return (
-    <section className="relative h-24 overflow-hidden border-b border-black/15 bg-[#f79bad] sm:h-28" aria-label="Gelatte promotion">
-      <div className="relative z-10 mx-auto flex h-full max-w-3xl items-center px-6 pr-28 sm:px-8 sm:pr-40">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#631c31] sm:text-xs">Little treat, big smile</p>
-          <p className="mt-1 text-lg font-semibold text-[#32111c] sm:text-2xl">เติมความสุขอีกหนึ่ง scoop ในทุกออเดอร์</p>
-        </div>
+    <section className="flex items-center gap-2 rounded-3xl bg-pink-soft py-2 pl-5 pr-2" aria-label="Gelatte promotion">
+      <div className="flex-1">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-pink-strong">Little treat, big smile</p>
+        <p className="mt-1 text-[17px] font-semibold leading-snug">เติมความสุขอีกหนึ่งสกู๊ป<br />ในทุกออเดอร์</p>
       </div>
-      <Image
-        src={vanillaGelato}
-        alt="Vanilla gelato"
-        className="pointer-events-none absolute bottom-0 right-4 h-20 w-20 object-contain sm:right-[max(2rem,calc((100vw-48rem)/2))] sm:h-24 sm:w-24"
-      />
+      <Image src={vanillaGelato} alt="Vanilla gelato" className="h-[88px] w-[88px] object-contain" />
     </section>
+  );
+}
+
+function SummaryRow({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className={strong ? "text-sm font-medium" : "text-[15px] text-subtle"}>{label}</span>
+      <span className={strong ? "text-[22px] font-semibold tabular-nums" : "text-[15px] tabular-nums"}>{value}</span>
+    </div>
   );
 }
 
@@ -60,6 +66,7 @@ export default function CartPage() {
   const [pickupAt, setPickupAt] = useState("");
   const [redirecting, setRedirecting] = useState(false);
   const total = items.reduce((sum, item) => sum + item.portions * item.unitPriceMinor, 0);
+  const scoops = items.reduce((sum, item) => sum + item.portions, 0);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -72,7 +79,7 @@ export default function CartPage() {
         toast.error("ตรวจสอบบัญชีไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
         return;
       }
-      toast.error(session.data ? "กรุณาใช้บัญชี CUSTOMER เพื่อสั่งสินค้า" : "กรุณาเข้าสู่ระบบก่อน Checkout");
+      toast.error(session.data ? "กรุณาใช้บัญชีลูกค้าเพื่อสั่งสินค้า" : "กรุณาเข้าสู่ระบบก่อนชำระเงิน");
       router.push("/login?next=/cart");
       return;
     }
@@ -103,7 +110,7 @@ export default function CartPage() {
         },
         onError: (error) => {
           if (error instanceof ApiClientError && error.status === 401) {
-            toast.error("กรุณาเข้าสู่ระบบ Customer ก่อนชำระเงิน");
+            toast.error("กรุณาเข้าสู่ระบบก่อนชำระเงิน");
             router.push("/login?next=/cart");
             return;
           }
@@ -123,132 +130,150 @@ export default function CartPage() {
     );
   };
 
-  if (!items.length) {
+  if (redirecting) {
     return (
-      <main className="font-prompt">
-        <CartPromoBanner />
-        <div className="mx-auto grid min-h-[70vh] max-w-xl place-items-center px-6 text-center">
-          <div className="border border-black bg-white p-12 shadow-2xl">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center border border-black bg-stone-50">
-              <ShoppingBag className="h-8 w-8 text-black" />
-            </div>
-            <h1 className="mt-6 text-2xl font-black uppercase tracking-wider text-black">YOUR BAG IS EMPTY</h1>
-            <p className="mt-2 text-xs uppercase tracking-widest text-black/60">ยังไม่มีรายการเจลาโต้ในตะกร้าของคุณ</p>
-            <Button asChild className="mt-8 px-8 py-4">
-              <Link href="/">DISCOVER MENU</Link>
-            </Button>
-          </div>
+      <main className="mx-auto grid min-h-[calc(100svh-60px)] max-w-md place-items-center px-8 text-center">
+        <div>
+          <span className="mx-auto grid h-[88px] w-[88px] place-items-center rounded-full bg-pink-soft">
+            <Loader2 className="h-10 w-10 animate-spin text-pink-strong" />
+          </span>
+          <h1 className="mt-4 text-[22px] font-semibold">กำลังพาไปหน้าชำระเงิน</h1>
+          <p className="mt-2 text-[15px] text-subtle">เราจองสต็อกไว้ให้แล้ว<br />กรุณาอย่าปิดหน้านี้</p>
+          <span className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-2 text-xs text-subtle">
+            <Lock className="h-3.5 w-3.5" /> Stripe · PromptPay
+          </span>
         </div>
       </main>
     );
   }
 
-  return (
-    <main className="font-prompt">
-      <CartPromoBanner />
-      <div className="mx-auto max-w-3xl px-6 pb-28 pt-10 sm:pt-14">
-      <Button asChild variant="ghost" className="-ml-3 mb-6">
-        <Link href="/"><ArrowLeft className="mr-2 h-4 w-4" /> CONTINUE SELECTION</Link>
-      </Button>
-      <div className="border-b border-black pb-6">
-        <h1 className="text-4xl font-black uppercase tracking-tight text-black">YOUR SELECTION</h1>
-        <p className="mt-1 text-xs font-semibold uppercase tracking-widest text-black/60">REVIEW ORDER SUMMARY & SCOOPS</p>
-      </div>
+  if (!items.length) {
+    return (
+      <main className="mx-auto flex min-h-[calc(100svh-60px)] max-w-md flex-col items-center justify-center px-8 pb-20 text-center">
+        <Image src={emptyBag} alt="" className="h-[200px] w-[200px] rounded-3xl object-cover" priority />
+        <h1 className="mt-3 text-[22px] font-semibold">ตะกร้ายังว่างอยู่</h1>
+        <p className="mt-2 text-[15px] text-subtle">ยังไม่มีเจลาโตในตะกร้าของคุณ<br />เลือกรสที่ชอบได้เลย</p>
+        <Link href="/" className={cn(buttonVariants({ size: "lg" }), "mt-6 w-56")}>ดูเมนูวันนี้</Link>
+      </main>
+    );
+  }
 
-      <div className="mt-8 space-y-4">
+  return (
+    <main className="mx-auto max-w-3xl px-4 pb-36 pt-2">
+      <CartPromo />
+
+      <ul className="mt-4 space-y-2.5" aria-label="รายการในตะกร้า">
         {items.map((item) => {
           const flavor = catalog.data?.find((entry) => entry.id === item.flavorId);
           const atLimit = flavor ? item.portions >= flavor.available_portions : false;
           return (
-            <Card key={item.flavorId} className="flex items-center gap-6 border border-black/10 bg-white p-5 transition-all hover:border-black">
+            <li key={item.flavorId} className="relative flex items-center gap-3.5 rounded-3xl border border-line bg-white p-3">
+              <div className={cn("relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-2xl", flavorTint(item.flavorName))}>
+                <Image src={flavor?.image_url ?? "/hero/3.png"} alt="" fill sizes="72px" className="object-contain" unoptimized={Boolean(flavor?.image_url)} />
+              </div>
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-base font-bold uppercase tracking-wide text-black">{item.flavorName}</h2>
-                <p className="mt-0.5 font-mono text-xs font-medium text-black/60">{formatMinor(item.unitPriceMinor)} / SCOOP</p>
+                <h2 className="truncate pr-8 text-[17px] font-semibold">{item.flavorName}</h2>
+                <p className="text-xs text-subtle">{formatMinor(item.unitPriceMinor)} / สกู๊ป</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <Stepper
+                    value={item.portions}
+                    label={item.flavorName}
+                    onDecrement={() => updatePortion(item.flavorId, item.portions - 1)}
+                    onIncrement={() => updatePortion(item.flavorId, item.portions + 1)}
+                    incrementDisabled={atLimit}
+                  />
+                  <span className="text-[17px] font-semibold tabular-nums">{formatMinor(item.unitPriceMinor * item.portions)}</span>
+                </div>
               </div>
-              <div className="flex items-center border border-black/20 bg-white p-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updatePortion(item.flavorId, item.portions - 1)} aria-label={`ลดจำนวน ${item.flavorName}`}>
-                  <Minus className="h-3.5 w-3.5" />
-                </Button>
-                <span className="w-10 text-center font-mono text-xs font-bold">{item.portions}</span>
-                <Button variant="ghost" size="icon" className="h-8 w-8 disabled:opacity-20" disabled={atLimit} onClick={() => updatePortion(item.flavorId, item.portions + 1)} aria-label={`เพิ่มจำนวน ${item.flavorName}`}>
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              <div className="w-24 text-right font-mono text-base font-bold text-black">{formatMinor(item.unitPriceMinor * item.portions)}</div>
-              <Button variant="ghost" size="icon" className="text-black/40" onClick={() => removeItem(item.flavorId)} aria-label={`ลบ ${item.flavorName}`}>
+              <button
+                type="button"
+                className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full text-subtle hover:bg-ink/5 hover:text-ink"
+                onClick={() => removeItem(item.flavorId)}
+                aria-label={`ลบ ${item.flavorName}`}
+              >
                 <Trash2 className="h-4 w-4" />
-              </Button>
-            </Card>
+              </button>
+            </li>
           );
         })}
-      </div>
+      </ul>
 
-      <section className="mt-10 border border-black bg-black p-8 text-white">
-        <div className="flex items-center justify-between text-xs uppercase tracking-widest text-white/70">
-          <span>TOTAL SCOOPS</span>
-          <span className="font-mono font-bold text-white">{items.reduce((sum, item) => sum + item.portions, 0)} SCOOPS</span>
-        </div>
-        <div className="mt-3 flex items-end justify-between border-t border-white/20 pt-4">
-          <span className="text-sm uppercase tracking-widest font-bold">TOTAL AMOUNT</span>
-          <span className="font-mono text-3xl font-bold">{formatMinor(total)}</span>
-        </div>
-        <Button size="lg" className="mt-8 h-14 w-full" onClick={openCheckout} disabled={session.isLoading}>
-          {session.isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CreditCard className="mr-2 h-4 w-4" />}
-          {session.isLoading ? "CHECKING ACCOUNT..." : "PROCEED TO CHECKOUT"}
-        </Button>
+      <Link href="/" className="mt-2.5 flex items-center justify-center gap-2 rounded-3xl border border-dashed border-line py-3.5 text-sm font-medium hover:border-ink/30">
+        <Plus className="h-[18px] w-[18px]" /> เพิ่มรสชาติอื่น
+      </Link>
+
+      <section className="mt-4 space-y-2.5 rounded-3xl border border-line bg-white p-4" aria-label="สรุปคำสั่งซื้อ">
+        <SummaryRow label="จำนวนสกู๊ป" value={`${scoops} สกู๊ป`} />
+        <SummaryRow label="รับสินค้า" value="เลือกเวลาตอนชำระเงิน" />
+        <hr className="border-line" />
+        <SummaryRow label="ยอดรวม" value={formatMinor(total)} strong />
       </section>
 
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white pb-safe pt-4">
+        <div className="mx-auto flex max-w-3xl items-center gap-4 px-4">
+          <div>
+            <p className="text-xs text-subtle">ยอดรวม · {scoops} สกู๊ป</p>
+            <p className="text-[22px] font-bold tabular-nums leading-tight">{formatMinor(total)}</p>
+          </div>
+          <Button size="lg" className="flex-1" onClick={openCheckout} disabled={session.isLoading}>
+            {session.isLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> กำลังตรวจสอบบัญชี…</> : "ไปชำระเงิน"}
+          </Button>
+        </div>
+      </div>
+
       <Sheet open={checkoutOpen} onOpenChange={(open) => !createOrder.isPending && setCheckoutOpen(open)}>
-        <SheetContent className="font-prompt border-l border-black bg-white p-6 sm:p-8 overflow-y-auto">
-          <SheetHeader className="text-left border-b border-black/10 pb-4">
-            <SheetTitle className="text-xl font-bold uppercase tracking-wider text-black">CHECKOUT & PAYMENT</SheetTitle>
-            <SheetDescription className="text-xs uppercase tracking-widest text-black/60">
-              STRIPE CHECKOUT — PROMPTPAY
-            </SheetDescription>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>ชำระเงิน</SheetTitle>
+            <SheetDescription>Stripe Checkout · PromptPay</SheetDescription>
           </SheetHeader>
 
-          <label className="mt-6 block text-[10px] font-bold uppercase tracking-widest text-black/70">
-            <span className="flex items-center gap-2"><Clock3 className="h-3.5 w-3.5" /> PICKUP TIME</span>
-            <select
-              value={pickupAt}
-              onChange={(event) => setPickupAt(event.target.value)}
-              disabled={createOrder.isPending || redirecting}
-              className="mt-2 h-11 w-full border border-black/20 bg-white px-3 font-mono text-sm text-black outline-none focus:border-black"
-            >
-              {slots.map((slot) => <option key={slot} value={slot}>{formatTime(slot)} น.</option>)}
-            </select>
-          </label>
+          <fieldset disabled={createOrder.isPending}>
+            <legend className="flex items-center gap-1.5 text-sm font-medium">
+              <Clock3 className="h-4 w-4 text-subtle" /> เลือกเวลารับสินค้า
+            </legend>
+            <div className="mt-2.5 grid grid-cols-3 gap-2" role="radiogroup" aria-label="เวลารับสินค้า">
+              {slots.map((slot) => (
+                <Chip key={slot} role="radio" aria-checked={slot === pickupAt} active={slot === pickupAt} className="h-10 px-0" onClick={() => setPickupAt(slot)}>
+                  {formatTime(slot)} น.
+                </Chip>
+              ))}
+            </div>
+          </fieldset>
 
-          <div className="mt-4 flex items-center justify-between border border-black/10 bg-stone-50 p-4">
-            <span className="text-xs font-bold uppercase tracking-wider text-black/70">ESTIMATED TOTAL</span>
-            <span className="font-mono text-2xl font-black text-black">{formatMinor(total)}</span>
+          <div className="mt-4 space-y-2 rounded-3xl border border-line bg-white p-4">
+            {items.map((item) => (
+              <SummaryRow key={item.flavorId} label={`${item.flavorName} × ${item.portions}`} value={formatMinor(item.unitPriceMinor * item.portions)} />
+            ))}
+            <hr className="border-line" />
+            <SummaryRow label="ยอดชำระโดยประมาณ" value={formatMinor(total)} strong />
           </div>
-          <p className="mt-2 text-[10px] text-black/50">ราคาสุดท้ายคำนวณโดยระบบ Order จากราคาเมนูล่าสุด และจองสต็อกไว้ระหว่างชำระเงิน</p>
+          <p className="mt-3 text-xs leading-relaxed text-subtle">ราคาสุดท้ายคำนวณจากราคาเมนูล่าสุด และจองสต็อกไว้ให้ระหว่างชำระเงิน</p>
 
-          <Button size="lg" className="mt-6 h-14 w-full text-xs font-bold uppercase tracking-wider" onClick={pay} disabled={!pickupAt || createOrder.isPending || redirecting}>
-            {createOrder.isPending || redirecting
-              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {redirecting ? "REDIRECTING TO STRIPE..." : "RESERVING YOUR SCOOPS..."}</>
-              : <><CreditCard className="mr-2 h-4 w-4" /> PAY WITH STRIPE</>}
+          <Button size="lg" className="mt-4 w-full" onClick={pay} disabled={!pickupAt || createOrder.isPending}>
+            {createOrder.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> กำลังจองสกู๊ปให้คุณ…</> : `ชำระเงิน ${formatMinor(total)}`}
           </Button>
-
-          <p className="mt-6 text-center text-[10px] uppercase tracking-widest text-black/50">SECURED BY STRIPE & IDEMPOTENCY PROTECTION</p>
+          <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-subtle">
+            <Lock className="h-3.5 w-3.5" /> ปลอดภัยด้วย Stripe · ป้องกันการชำระซ้ำ
+          </p>
         </SheetContent>
       </Sheet>
 
       <AlertDialog open={Boolean(stockError)} onOpenChange={(open) => !open && setStockError(null)}>
-        <AlertDialogContent className="border border-black bg-white p-8">
+        <AlertDialogContent>
+          <span className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full bg-pink-soft">
+            <AlertTriangle className="h-6 w-6 text-pink-strong" />
+          </span>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl font-bold uppercase tracking-wider">STOCK OUT OF SYNC</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs text-black/70">{stockError} เราอัปเดตจำนวนล่าสุดให้แล้ว กรุณากลับไปปรับตะกร้า</AlertDialogDescription>
+            <AlertDialogTitle>สต็อกมีการเปลี่ยนแปลง</AlertDialogTitle>
+            <AlertDialogDescription>{stockError} เราอัปเดตจำนวนล่าสุดให้แล้ว กรุณาปรับตะกร้าอีกครั้ง</AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="mt-6">
-            <AlertDialogAction onClick={() => { setStockError(null); router.push("/"); }}>
-              RETURN TO CATALOG
-            </AlertDialogAction>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setStockError(null)}>ปรับตะกร้า</AlertDialogAction>
+            <AlertDialogCancel onClick={() => { setStockError(null); router.push("/"); }}>กลับไปดูเมนู</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      </div>
     </main>
   );
 }
