@@ -7,7 +7,8 @@ import { notificationTitles } from "@/components/NotificationStream";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useSession } from "@/lib/api";
 import { cn, formatDateTime } from "@/lib/utils";
-import { useNotificationStore } from "@/store/useNotificationStore";
+import { useNotificationStore } from "@/store/useNotificationStore";import { notificationText } from "@/lib/notification-text";
+
 
 /** The bell and history sheet. The stream itself lives in NotificationStream, mounted by the layout. */
 export function CustomerNotification() {
@@ -72,8 +73,7 @@ export function CustomerNotification() {
                   <span className="shrink-0 text-xs text-subtle">{formatDateTime(notif.occurred_at)}</span>
                 </div>
                 <p className="mt-1 text-[13px] text-subtle">
-                  {notif.data.queue_number && `คิว #${notif.data.queue_number} · `}
-                  {notif.message}
+                  {notificationText(notif)}
                 </p>
                 {notif.data.order_id && (
                   <Link href={`/queue/${notif.data.order_id}`} onClick={() => setIsOpen(false)} className="mt-2 inline-flex items-center gap-0.5 text-sm font-medium hover:underline">

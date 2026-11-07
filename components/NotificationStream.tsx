@@ -7,7 +7,8 @@ import { toast } from "sonner";
 import { useSession } from "@/lib/api";
 import { adoptSessionUser } from "@/store/account";
 import { useNotificationStore } from "@/store/useNotificationStore";
-import type { AppNotification, NotificationType } from "@/types";
+import type { AppNotification, NotificationType } from "@/types";import { notificationText } from "@/lib/notification-text";
+
 
 const NOTIFICATION_TYPES: NotificationType[] = ["order.confirmed", "order.ready", "order.cancelled"];
 const RECONNECT_DELAY_MS = 15_000;
@@ -52,7 +53,7 @@ function showToast(notification: AppNotification) {
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">{notificationTitles[notification.type]}</p>
-        <p className="mt-0.5 text-xs text-canvas/70">{notification.message}</p>
+        <p className="mt-0.5 text-xs text-canvas/70">{notificationText(notification)}</p>
         {orderId && (
           <Link href={`/queue/${orderId}`} className="mt-2 inline-flex items-center gap-0.5 text-xs font-semibold underline-offset-4 hover:underline" onClick={() => toast.dismiss(id)}>
             {notification.data.queue_number ? `ดูตั๋วคิว #${notification.data.queue_number}` : "ดูคำสั่งซื้อ"} <ChevronRight className="h-3.5 w-3.5" />

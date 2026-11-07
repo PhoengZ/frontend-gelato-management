@@ -18,7 +18,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      <Toaster richColors position="top-center" />
+      {/* Expanded so consecutive order notifications sit one above the other instead of overlapping. */}
+      <Toaster richColors position="top-center" expand visibleToasts={3} gap={8} />
     </QueryClientProvider>
   );
 }
