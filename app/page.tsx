@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, ChevronRight, WifiOff } from "lucide-react";
@@ -9,7 +9,8 @@ import { FlavorCard } from "@/components/FlavorCard";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCatalog } from "@/lib/api";
+import { useCatalog, useFulfillmentTicket, useOrder } from "@/lib/api";
+import { deriveOrderStatus, isFinalStatus, isPaidOrLater } from "@/lib/order-status";
 import { cn, formatMinor } from "@/lib/utils";
 import strawberryHero from "@/public/hero/2.png";
 import { useCartStore } from "@/store/useCartStore";
@@ -23,7 +24,19 @@ const filters: Array<{ key: string; label: string; match: (flavor: MenuFlavor) =
 ];
 
 function StoreStatus() {
-  const orderId = useCartStore((state) => state.checkout?.orderId);
+  const orderId = useCartStore((state) => state.activeOrderId);
+  const clearActiveOrder = useCartStore((state) => state.clearActiveOrder);
+  const order = useOrder(orderId ?? "");
+  const orderStatus = order.data?.status;
+  const ticket = useFulfillmentTicket(orderId ?? "", Boolean(orderStatus && isPaidOrLater(orderStatus) && !isFinalStatus(orderStatus)));
+  const finished = orderStatus && isFinalStatus(deriveOrderStatus(orderStatus, ticket.data?.status, false));
+  const gone = (order.error as { status?: number } | null | undefined)?.status === 404;
+
+  // The customer may pick up without reopening the queue page, so the link settles itself here.
+  useEffect(() => {
+    if (orderId && (finished || gone)) clearActiveOrder(orderId);
+  }, [orderId, finished, gone, clearActiveOrder]);
+
   const content = (
     <>
       <span className="relative flex h-2 w-2 shrink-0">

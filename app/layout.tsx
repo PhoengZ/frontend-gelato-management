@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Anuphan } from "next/font/google";
 import { CookieConsent } from "@/components/CookieConsent";
+import { NotificationStream } from "@/components/NotificationStream";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Providers } from "@/components/providers";
 import "./globals.css";
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="th" className={anuphan.variable}>
       <body className="font-sans antialiased">
         <Providers>
+          <NotificationStream />
           <SiteHeader />
           {children}
           <CookieConsent />

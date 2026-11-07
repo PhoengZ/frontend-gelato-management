@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, BarChart3, Loader2, RefreshCw, TrendingUp, Trash2 } from "lucide-react";
 import { PageHeader, Panel, StatTile } from "@/components/backoffice/PageParts";
+import { StaleNotice, useLoginOnUnauthorized } from "@/components/StaleNotice";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useAnalytics } from "@/lib/api";
 import { cn, formatPrice } from "@/lib/utils";
@@ -15,6 +16,9 @@ const periods: Array<{ value: AnalyticsPeriod; label: string }> = [
   { value: "1m", label: "30 วัน" },
   { value: "6m", label: "6 เดือน" }
 ];
+
+/** Lets grid children shrink below their min-content, so only the chart scrolls on a phone. */
+const gridItems = "[&>*]:min-w-0";
 
 function SalesTrendChart({ trend }: { trend: Array<{ date: string; label: string; revenue: number; orders: number }> }) {
   const width = 720;
@@ -85,6 +89,7 @@ function BarList({ rows, max, color, valueLabel, empty }: { rows: Array<{ id: st
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<AnalyticsPeriod>("1w");
   const analytics = useAnalytics(period);
+  const redirectingToLogin = useLoginOnUnauthorized(analytics.error);
   const periodLabel = periods.find((item) => item.value === period)?.label ?? period;
 
   const periodControl = (
@@ -120,10 +125,10 @@ export default function AnalyticsPage() {
     />
   );
 
-  if (analytics.isLoading) {
+  if (analytics.isLoading || redirectingToLogin) {
     return <main className="mx-auto max-w-[76rem] space-y-7 px-6 pb-12 pt-8 lg:px-10">{header}<div className="grid min-h-[50vh] place-items-center"><Loader2 className="h-8 w-8 animate-spin text-pink-strong" /></div></main>;
   }
-  if (analytics.isError || !analytics.data) {
+  if (!analytics.data) {
     return (
       <main className="mx-auto max-w-[76rem] space-y-7 px-6 pb-12 pt-8 lg:px-10">
         {header}
@@ -146,16 +151,18 @@ export default function AnalyticsPage() {
 
   return (
     <main className="mx-auto max-w-[76rem] space-y-7 px-6 pb-12 pt-8 lg:px-10">
+      {analytics.isError && <StaleNotice />}
       {header}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="ตัวชี้วัดหลัก">
+      {/* Without an explicit track an implicit grid column grows to its content's min-content. */}
+      <section className={cn(gridItems, "grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 xl:grid-cols-4")} aria-label="ตัวชี้วัดหลัก">
         <StatTile label="ยอดขายรวม" value={formatPrice(data.totalRevenue)} note={periodLabel} />
         <StatTile label="จำนวนออเดอร์" value={data.totalOrders.toLocaleString("th-TH")} note={`เฉลี่ย ${formatPrice(averageOrder)} / ออเดอร์`} />
         <StatTile label="สกู๊ปที่ขายได้" value={data.totalScoops.toLocaleString("th-TH")} note={`${averageScoops.toFixed(1)} สกู๊ป / ออเดอร์`} />
         <StatTile label="ของเสีย" value={`${data.totalWaste} สกู๊ป`} note={`อัตราของเสีย ${wasteRate.toFixed(1)}%`} tone="pink" />
       </section>
 
-      <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]">
+      <section className={cn(gridItems, "grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]")}>
         <Panel
           title={`แนวโน้มรายได้ · ${periodLabel}`}
           description="รายได้รวมรายวัน (บาท)"
@@ -184,7 +191,7 @@ export default function AnalyticsPage() {
         </section>
       </section>
 
-      <section className="grid items-start gap-5 lg:grid-cols-2">
+      <section className={cn(gridItems, "grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2")}>
         <Panel title="ยอดขายตามรสชาติ" description="จำนวนสกู๊ปและรายได้" icon={<BarChart3 className="h-5 w-5" />}>
           <BarList
             rows={data.salesByFlavor.map((item) => ({ id: item.flavorId, name: item.flavorName, value: item.portions, detail: `${item.portions} สกู๊ป · ${formatPrice(item.revenue)}` }))}

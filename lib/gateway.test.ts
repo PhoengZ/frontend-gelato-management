@@ -10,6 +10,7 @@ function token(claims: Record<string, unknown>) {
 
 const future = Math.floor(Date.now() / 1000) + 600;
 const customer = token({ sub: "c19b830e-a733-41de-bf26-aeb123926e36", role: "CUSTOMER", exp: future });
+const staff = token({ sub: "b19b830e-a733-41de-bf26-aeb123926e36", role: "STAFF", exp: future });
 const manager = token({ sub: "a19b830e-a733-41de-bf26-aeb123926e36", role: "MANAGER", exp: future });
 
 function browserRequest(path: string, init: RequestInit & { session?: string } = {}) {
@@ -78,6 +79,69 @@ describe("forwardToBackend", () => {
     expect((await forwardToBackend(browserRequest("fulfillments", { session: customer }), ["fulfillments"])).status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
     expect((await forwardToBackend(browserRequest("analytics/summary", { session: manager }), ["analytics", "summary"])).status).toBe(200);
+  });
+
+  describe("customer ticket access", () => {
+    const ticket = "8d29d6cf-bd4d-48ca-9e4f-dcd8ec54e594";
+
+    it("opens only the single ticket GET to customers", async () => {
+      const response = await forwardToBackend(browserRequest(`fulfillments/${ticket}`, { session: customer }), ["fulfillments", ticket]);
+      expect(response.status).toBe(200);
+      expect(fetchMock.mock.calls[0][0]).toBe(`http://gateway:8080/api/v1/fulfillments/${ticket}`);
+    });
+
+    it("still requires a session for the ticket GET", async () => {
+      expect((await forwardToBackend(browserRequest(`fulfillments/${ticket}`), ["fulfillments", ticket])).status).toBe(401);
+    });
+
+    it.each([
+      ["list", "GET", ["fulfillments"]],
+      ["history", "GET", ["fulfillments", ticket, "history"]],
+      ["status update", "PATCH", ["fulfillments", ticket, "status"]],
+      ["slot capacity", "GET", ["fulfillments", "slots", "capacity"]],
+      ["non-UUID segment", "GET", ["fulfillments", "slots"]],
+      ["ticket write", "PATCH", ["fulfillments", ticket]]
+    ])("keeps %s closed to customers", async (_name, method, path) => {
+      const response = await forwardToBackend(browserRequest(path.join("/"), { method, session: customer }), path);
+      expect(response.status).toBe(403);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("keeps staff access to every fulfillment route", async () => {
+      expect((await forwardToBackend(browserRequest("fulfillments", { session: staff }), ["fulfillments"])).status).toBe(200);
+      expect((await forwardToBackend(browserRequest(`fulfillments/${ticket}/status`, { method: "PATCH", session: staff }), ["fulfillments", ticket, "status"])).status).toBe(200);
+    });
+  });
+
+  describe("cross-site protection", () => {
+    it("rejects cross-site mutations before contacting the backend", async () => {
+      const response = await forwardToBackend(
+        browserRequest("orders", { method: "POST", session: customer, headers: { origin: "https://attacker.invalid", "sec-fetch-site": "cross-site" }, body: "{}" }),
+        ["orders"]
+      );
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ code: "CROSS_SITE_REQUEST_REJECTED" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("does not apply the check to reads", async () => {
+      const response = await forwardToBackend(browserRequest("flavors", { headers: { "sec-fetch-site": "cross-site" } }), ["flavors"]);
+      expect(response.status).toBe(200);
+    });
+
+    it("forwards a same-origin mutation", async () => {
+      const response = await forwardToBackend(
+        browserRequest("orders", { method: "POST", session: customer, headers: { origin: "http://localhost:3000", "sec-fetch-site": "same-origin" }, body: "{}" }),
+        ["orders"]
+      );
+      expect(response.status).toBe(200);
+    });
+  });
+
+  it("forwards X-Forwarded-For so the Gateway can rate limit by client IP", async () => {
+    await forwardToBackend(browserRequest("flavors", { headers: { "x-forwarded-for": "203.0.113.7" } }), ["flavors"]);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new Headers(init.headers).get("x-forwarded-for")).toBe("203.0.113.7");
   });
 
   it("routes the notification stream to the Notification Service when configured", async () => {

@@ -38,7 +38,7 @@ browser ──same-origin /api/v1/*──▶ Next.js route handlers ──Bearer
 | --- | --- |
 | Menu | `GET /flavors?active=true` + `GET /inventory/availability`, joined by `flavor_id` |
 | Cart / checkout | `POST /orders` with `Idempotency-Key` and `{pickup_at, items}`, then redirect to `checkout_url` (Stripe Checkout) |
-| Order page `/queue/[orderId]` | `GET /orders/{id}` (polled), `POST /orders/{id}/cancel`; queue number from the `order.ready` notification |
+| Order page `/queue/[orderId]` | `GET /orders/{id}` and `GET /fulfillments/{order_id}` (polled), `POST /orders/{id}/cancel`; `order.ready` is only a fast path |
 | Notifications | `GET /notifications/stream` (SSE) |
 | Kitchen `/staff` | `GET /fulfillments?status=PREPARING,READY_FOR_PICKUP`, `PATCH /fulfillments/{order_id}/status` |
 | Manager `/manager` | `GET/POST/PATCH/DELETE /flavors`, `GET/POST /inventory/batches`, `POST /inventory/batches/{id}/waste` |
@@ -59,7 +59,7 @@ still returns baht.
 ## Known backend gaps
 
 - Order never moves past `PAID` (Fulfillment status is not fed back), so the order page
-  relies on the `order.ready` notification to show "ready" and the queue number.
+  polls the customer's Fulfillment ticket for "ready", "picked up" and the queue number.
 
 ## Production image
 

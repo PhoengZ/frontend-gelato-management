@@ -8,6 +8,7 @@ import { AuthFooter, GoogleButton, OrDivider } from "@/components/auth/AuthParts
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { useLogin } from "@/lib/api";
+import { safeNextPath } from "@/lib/safe-redirect";
 import loginHero from "@/public/illustrations/login-hero.png";
 
 export default function LoginPage() {
@@ -22,7 +23,7 @@ export default function LoginPage() {
       onSuccess: (session) => {
         const requested = new URLSearchParams(window.location.search).get("next");
         const fallback = session.user.role === "MANAGER" ? "/manager" : session.user.role === "STAFF" ? "/staff" : "/";
-        router.replace(requested?.startsWith("/") && !requested.startsWith("//") ? requested : fallback);
+        router.replace(safeNextPath(requested, fallback));
         router.refresh();
       }
     });

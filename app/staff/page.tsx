@@ -4,6 +4,7 @@ import { Check, Clock3, Loader2, RefreshCw, ShoppingBag, BellRing } from "lucide
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { Eyebrow, PageHeader, StatTile } from "@/components/backoffice/PageParts";
+import { StaleNotice, useLoginOnUnauthorized } from "@/components/StaleNotice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useFulfillments, useUpdateFulfillmentStatus } from "@/lib/api";
@@ -79,6 +80,7 @@ function OrderColumn({ title, description, orders, onUpdate, updatingId, ink = f
 export default function StaffPage() {
   const orders = useFulfillments();
   const updateStatus = useUpdateFulfillmentStatus();
+  const redirectingToLogin = useLoginOnUnauthorized(orders.error);
   const preparing = orders.data?.filter((order) => order.status === "PREPARING") ?? [];
   const ready = orders.data?.filter((order) => order.status === "READY_FOR_PICKUP") ?? [];
   const scoops = [...preparing, ...ready].reduce((sum, order) => sum + order.items.reduce((s, item) => s + item.portions, 0), 0);
@@ -108,13 +110,15 @@ export default function StaffPage() {
         }
       />
 
-      {orders.isLoading ? (
+      {orders.isError && orders.data && !redirectingToLogin && <StaleNotice />}
+
+      {orders.isLoading || redirectingToLogin ? (
         <div className="grid min-h-[50vh] place-items-center"><Loader2 className="h-8 w-8 animate-spin text-pink-strong" /></div>
-      ) : orders.isError ? (
+      ) : !orders.data ? (
         <section className="flex flex-col items-center rounded-3xl border border-line bg-white px-6 py-16 text-center">
           <span className="grid h-14 w-14 place-items-center rounded-full bg-pink-soft"><RefreshCw className="h-6 w-6 text-pink-strong" /></span>
           <h2 className="mt-3 text-[17px] font-semibold">โหลดออเดอร์ไม่สำเร็จ</h2>
-          <p className="mt-1 text-[13px] text-subtle">กรุณาตรวจสอบการเชื่อมต่อ API Gateway แล้วลองใหม่</p>
+          <p className="mt-1 text-[13px] text-subtle">ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง</p>
           <Button className="mt-5 w-40" onClick={() => void orders.refetch()}>ลองใหม่</Button>
         </section>
       ) : (

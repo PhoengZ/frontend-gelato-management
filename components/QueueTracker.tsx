@@ -9,7 +9,19 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { toast } from "sonner";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { useCancelOrder, useCreateOrder, useOrder } from "@/lib/api";
+import { errorStatus, StaleNotice, useLoginOnUnauthorized } from "@/components/StaleNotice";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
+import { useCancelOrder, useCreateOrder, useFulfillmentTicket, useOrder } from "@/lib/api";
+import { deriveOrderStatus, isFinalStatus, isPaidOrLater } from "@/lib/order-status";
 import { cn, formatMinor, formatTime } from "@/lib/utils";
 import { useCartStore } from "@/store/useCartStore";
 import { useReadyNotification } from "@/store/useNotificationStore";
@@ -41,7 +53,14 @@ const statusView: Record<OrderStatus, StatusView> = {
   CANCELLED: { title: "ยกเลิกแล้ว", description: "คำสั่งซื้อนี้ถูกยกเลิกและคืนสต็อกเรียบร้อยแล้ว", tone: "neutral", icon: X, step: -1 }
 };
 
-const unpaidStatuses: OrderStatus[] = ["PENDING_PAYMENT", "CANCEL_PENDING", "PAYMENT_CONFIRMING", "CANCELLED"];
+/** How long a return from Stripe waits for the webhook before offering Pay and Cancel again. */
+const PAYMENT_CONFIRMATION_WINDOW_MS = 60_000;
+
+const paymentConfirmationView: StatusView = {
+  ...statusView.PAYMENT_CONFIRMING,
+  title: "กำลังยืนยันการชำระเงิน",
+  description: "เรากำลังรอผลจาก Stripe ไม่ต้องชำระซ้ำ หน้านี้จะอัปเดตให้อัตโนมัติ"
+};
 
 function playReadyTone() {
   const AudioContextClass = window.AudioContext ??
@@ -74,25 +93,57 @@ function InfoTile({ icon: Icon, label, value }: { icon: LucideIcon; label: strin
   );
 }
 
-export function QueueTracker({ orderId }: { orderId: string }) {
-  const query = useOrder(orderId);
+function confirmationTimeLeft(returnedAt: number | undefined) {
+  if (returnedAt === undefined) return 0;
+  const elapsed = Date.now() - returnedAt;
+  return elapsed >= 0 && elapsed < PAYMENT_CONFIRMATION_WINDOW_MS ? PAYMENT_CONFIRMATION_WINDOW_MS - elapsed : 0;
+}
+
+export function QueueTracker({ orderId, returnedAt }: { orderId: string; returnedAt?: number }) {
+  const [awaitingWebhook, setAwaitingWebhook] = useState(() => confirmationTimeLeft(returnedAt) > 0);
+  const [cancelPromptOpen, setCancelPromptOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const query = useOrder(orderId, { fastPoll: awaitingWebhook });
+  const order = query.data;
+  const ticketQuery = useFulfillmentTicket(orderId, Boolean(order && isPaidOrLater(order.status) && !isFinalStatus(order.status)));
+  const ticket = ticketQuery.data;
   const readyNotification = useReadyNotification(orderId);
   const cancelOrder = useCancelOrder();
   const createOrder = useCreateOrder();
   const checkout = useCartStore((state) => state.checkout);
   const clearCart = useCartStore((state) => state.clearCart);
   const discardCheckout = useCartStore((state) => state.discardCheckout);
+  const setActiveOrder = useCartStore((state) => state.setActiveOrder);
+  const clearActiveOrder = useCartStore((state) => state.clearActiveOrder);
+  const settleOrder = useCartStore((state) => state.settleOrder);
   const reduceMotion = useReducedMotion();
   const wasReady = useRef<boolean | undefined>(undefined);
   const [soundEnabled, setSoundEnabled] = useState(false);
 
-  const order = query.data;
-  // Order does not track the kitchen yet; the queue number arrives with the `order.ready` notification.
-  const status: OrderStatus | undefined =
-    order && readyNotification && !["COMPLETED", "CANCELLED"].includes(order.status) ? "READY_FOR_PICKUP" : order?.status;
+  const redirectingToLogin = useLoginOnUnauthorized(query.error);
+  const notFound = !order && errorStatus(query.error) === 404;
+  const status: OrderStatus | undefined = order && deriveOrderStatus(order.status, ticket?.status, Boolean(readyNotification));
   const ready = status === "READY_FOR_PICKUP";
-  const queueNumber = readyNotification?.data.queue_number;
+  const queueNumber = ticket?.queue_number ?? readyNotification?.data.queue_number;
   const ownsCheckout = checkout?.orderId === orderId;
+  const holdExpiresAt = order ? Date.parse(order.reservation_expires_at) : NaN;
+  const holdExpired = holdExpiresAt <= now;
+  const confirmingPayment = awaitingWebhook && status === "PENDING_PAYMENT";
+
+  useEffect(() => {
+    const timeLeft = confirmationTimeLeft(returnedAt);
+    if (timeLeft <= 0) return;
+    const timer = setTimeout(() => setAwaitingWebhook(false), timeLeft);
+    return () => clearTimeout(timer);
+  }, [returnedAt]);
+
+  useEffect(() => {
+    if (!Number.isFinite(holdExpiresAt)) return;
+    const timeLeft = holdExpiresAt - Date.now();
+    if (timeLeft <= 0) return;
+    const timer = setTimeout(() => setNow(Date.now()), timeLeft);
+    return () => clearTimeout(timer);
+  }, [holdExpiresAt]);
 
   useEffect(() => {
     if (ready && wasReady.current === false && soundEnabled) playReadyTone();
@@ -102,8 +153,19 @@ export function QueueTracker({ orderId }: { orderId: string }) {
   useEffect(() => {
     if (!ownsCheckout || !order) return;
     if (order.status === "CANCELLED") discardCheckout();
-    else if (!unpaidStatuses.includes(order.status)) clearCart();
-  }, [ownsCheckout, order, clearCart, discardCheckout]);
+    else if (isPaidOrLater(order.status)) {
+      clearCart();
+      setActiveOrder(orderId);
+    }
+  }, [ownsCheckout, order, orderId, clearCart, discardCheckout, setActiveOrder]);
+
+  useEffect(() => {
+    if (order && (order.status === "CANCELLED" || isPaidOrLater(order.status))) settleOrder(orderId);
+  }, [order, orderId, settleOrder]);
+
+  useEffect(() => {
+    if (notFound || (status && isFinalStatus(status))) clearActiveOrder(orderId);
+  }, [notFound, status, orderId, clearActiveOrder]);
 
   const continuePayment = () => {
     if (!checkout) return;
@@ -114,7 +176,11 @@ export function QueueTracker({ orderId }: { orderId: string }) {
           if (replay.checkout_url) window.location.assign(replay.checkout_url);
           else void query.refetch();
         },
-        onError: (error) => toast.error(error.message)
+        onError: (error) => {
+          // The same key can never succeed again; the cart starts a new order with a new one.
+          if ((error as { code?: string }).code === "RESERVATION_EXPIRED") discardCheckout();
+          toast.error(error.message);
+        }
       }
     );
   };
@@ -126,7 +192,7 @@ export function QueueTracker({ orderId }: { orderId: string }) {
     });
   };
 
-  if (query.isLoading) {
+  if (query.isLoading || redirectingToLogin) {
     return (
       <main className="grid min-h-[75svh] place-items-center">
         <div className="text-center">
@@ -139,14 +205,23 @@ export function QueueTracker({ orderId }: { orderId: string }) {
     );
   }
 
-  if (query.isError || !order || !status) {
+  if (!order || !status) {
     return (
       <main className="mx-auto flex min-h-[calc(100svh-60px)] max-w-md flex-col items-center justify-center px-8 pb-20 text-center">
         <span className="relative h-40 w-40 overflow-hidden rounded-full bg-pink-soft">
           <Image src={cookieMascot} alt="" fill sizes="160px" className="object-contain" />
         </span>
-        <h1 className="mt-3 text-[22px] font-semibold">ไม่พบคำสั่งซื้อนี้</h1>
-        <p className="mt-2 text-[15px] text-subtle">คำสั่งซื้อนี้ไม่อยู่ในบัญชีของคุณ<br />หรืออาจถูกลบไปแล้ว</p>
+        {notFound ? (
+          <>
+            <h1 className="mt-3 text-[22px] font-semibold">ไม่พบคำสั่งซื้อนี้</h1>
+            <p className="mt-2 text-[15px] text-subtle">คำสั่งซื้อนี้ไม่อยู่ในบัญชีของคุณ<br />หรืออาจถูกลบไปแล้ว</p>
+          </>
+        ) : (
+          <>
+            <h1 className="mt-3 text-[22px] font-semibold">ระบบขัดข้องชั่วคราว</h1>
+            <p className="mt-2 text-[15px] text-subtle">คำสั่งซื้อของคุณไม่ได้หายไปไหน<br />กรุณาลองใหม่อีกครั้งในอีกสักครู่</p>
+          </>
+        )}
         <div className="mt-6 flex gap-2.5">
           <Button variant="outline" onClick={() => void query.refetch()}>
             <RefreshCw className="h-4 w-4" /> ลองใหม่
@@ -157,13 +232,14 @@ export function QueueTracker({ orderId }: { orderId: string }) {
     );
   }
 
-  const view = statusView[status];
+  const view = confirmingPayment ? paymentConfirmationView : statusView[status];
   const Icon = view.icon;
-  const spinning = status === "PAYMENT_CONFIRMING" || status === "CANCEL_PENDING";
+  const spinning = confirmingPayment || status === "PAYMENT_CONFIRMING" || status === "CANCEL_PENDING";
   const cancelled = status === "CANCELLED";
 
   return (
     <main className="mx-auto max-w-xl space-y-4 px-4 pb-16 pt-1">
+      {query.isError && <StaleNotice />}
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-subtle">สั่งเมื่อ {formatTime(order.created_at)} น. · #{order.order_id.slice(0, 8).toUpperCase()}</p>
         <button
@@ -249,18 +325,31 @@ export function QueueTracker({ orderId }: { orderId: string }) {
         </ol>
       )}
 
-      {status === "PENDING_PAYMENT" && (
+      {status === "PENDING_PAYMENT" && !confirmingPayment && (
         <section className="space-y-2.5">
-          <Button size="lg" className="w-full" onClick={continuePayment} disabled={!ownsCheckout || createOrder.isPending}>
+          <Button size="lg" className="w-full" onClick={continuePayment} disabled={!ownsCheckout || createOrder.isPending || holdExpired}>
             {createOrder.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
             ชำระเงินต่อ
           </Button>
-          <Button variant="outline" size="lg" className="w-full" onClick={cancel} disabled={cancelOrder.isPending}>
+          <Button variant="outline" size="lg" className="w-full" onClick={() => setCancelPromptOpen(true)} disabled={cancelOrder.isPending}>
             {cancelOrder.isPending && <Loader2 className="h-4 w-4 animate-spin" />} ยกเลิกคำสั่งซื้อ
           </Button>
           <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-pink-strong">
-            <Clock3 className="h-3.5 w-3.5" /> จองสต็อกไว้ถึง {formatTime(order.reservation_expires_at)} น.
+            <Clock3 className="h-3.5 w-3.5" />
+            {holdExpired ? "หมดเวลาจองสต็อกแล้ว กรุณากลับไปที่ตะกร้าเพื่อสั่งใหม่" : `จองสต็อกไว้ถึง ${formatTime(order.reservation_expires_at)} น.`}
           </p>
+          <AlertDialog open={cancelPromptOpen} onOpenChange={setCancelPromptOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>ยกเลิกคำสั่งซื้อนี้?</AlertDialogTitle>
+                <AlertDialogDescription>หากชำระเงินไปแล้ว กรุณารอการยืนยันสักครู่ก่อนยกเลิก เมื่อยกเลิกแล้วจะคืนสต็อกทันที</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogAction onClick={cancel}>ยืนยันการยกเลิก</AlertDialogAction>
+                <AlertDialogCancel>ไม่ยกเลิก</AlertDialogCancel>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </section>
       )}
 

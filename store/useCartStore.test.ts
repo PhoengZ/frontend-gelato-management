@@ -65,4 +65,21 @@ describe("useCartStore", () => {
     useCartStore.getState().clearCart();
     expect(useCartStore.getState()).toMatchObject({ items: [], checkout: null });
   });
+
+  it("keeps the unsettled order through cart edits until it is settled", () => {
+    useCartStore.setState({ items: [{ flavorId: "a", flavorName: "A", portions: 1, unitPriceMinor: 100 }], checkout: { idempotencyKey: "k", order: { pickup_at: "x", items: [] } } });
+    useCartStore.getState().attachOrder("order-1");
+    useCartStore.getState().updatePortion("a", 3);
+    expect(useCartStore.getState()).toMatchObject({ checkout: null, unsettledOrderId: "order-1" });
+    useCartStore.getState().settleOrder("other");
+    expect(useCartStore.getState().unsettledOrderId).toBe("order-1");
+    useCartStore.getState().settleOrder("order-1");
+    expect(useCartStore.getState().unsettledOrderId).toBeNull();
+  });
+
+  it("forgets the unsettled order on reset", () => {
+    useCartStore.setState({ unsettledOrderId: "order-1" });
+    useCartStore.getState().reset();
+    expect(useCartStore.getState().unsettledOrderId).toBeNull();
+  });
 });

@@ -1,4 +1,5 @@
 import { AUTH_COOKIE, decodeAccessToken, type AccessTokenClaims } from "@/lib/auth";
+import { crossSiteRejection } from "@/lib/request-guard";
 import type { UserRole } from "@/types";
 
 /** Server-only: the API Gateway origin, e.g. http://localhost:8080. */
@@ -16,16 +17,22 @@ function notificationUrl() {
   return process.env.NOTIFICATION_SERVICE_URL?.replace(/\/$/, "") || gatewayUrl();
 }
 
-/**
- * Role checks the frontend enforces itself because the owning services do not yet
- * (the Gateway only verifies the token; Fulfillment and Analytics have no role guards).
- */
-const roleGuards: Array<{ prefix: string; roles: UserRole[] }> = [
-  { prefix: "fulfillments", roles: ["STAFF", "MANAGER"] },
-  { prefix: "analytics", roles: ["MANAGER"] }
-];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const FORWARDED_REQUEST_HEADERS = ["accept", "content-type", "idempotency-key", "last-event-id"];
+/**
+ * Role checks applied here before forwarding, as a first line in front of the owning services.
+ * Fulfillment lets a customer read the ticket of their own order (any other ticket is a 404
+ * from the service, per contracts/openapi/fulfillment-service.v1.yaml), so only that single GET
+ * is open to customers.
+ */
+function requiredRoles(method: string, path: string[]): UserRole[] | null {
+  if (path[0] === "analytics") return ["MANAGER"];
+  if (path[0] !== "fulfillments") return null;
+  const isTicketRead = method === "GET" && path.length === 2 && UUID.test(path[1]);
+  return isTicketRead ? ["CUSTOMER", "STAFF", "MANAGER"] : ["STAFF", "MANAGER"];
+}
+
+const FORWARDED_REQUEST_HEADERS = ["accept", "content-type", "idempotency-key", "last-event-id", "x-forwarded-for"];
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "cache-control", "retry-after"];
 
 export function sessionFromRequest(request: Request): { token: string; claims: AccessTokenClaims } | null {
@@ -49,11 +56,16 @@ function errorResponse(status: number, code: string, message: string) {
  * An expired or missing session is forwarded anonymously so public reads keep working.
  */
 export async function forwardToBackend(request: Request, path: string[]): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    const rejection = crossSiteRejection(request);
+    if (rejection) return rejection;
+  }
+
   const session = sessionFromRequest(request);
-  const guard = roleGuards.find(({ prefix }) => path[0] === prefix);
-  if (guard) {
+  const roles = requiredRoles(request.method, path);
+  if (roles) {
     if (!session) return errorResponse(401, "UNAUTHORIZED", "Authentication is required");
-    if (!guard.roles.includes(session.claims.role)) return errorResponse(403, "FORBIDDEN", "Insufficient role");
+    if (!roles.includes(session.claims.role)) return errorResponse(403, "FORBIDDEN", "Insufficient role");
   }
 
   const origin = path[0] === "notifications" ? notificationUrl() : gatewayUrl();

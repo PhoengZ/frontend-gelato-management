@@ -1,8 +1,8 @@
 import type { PropsWithChildren } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiClientError, useCatalog, useCreateOrder, useFulfillments, useSignup, withAvailability } from "@/lib/api";
+import { ApiClientError, requestJson, useCatalog, useCreateOrder, useFulfillments, useFulfillmentTicket, useOrder, useSignup, withAvailability } from "@/lib/api";
 import type { Flavor } from "@/types";
 
 function wrapper({ children }: PropsWithChildren) {
@@ -100,6 +100,99 @@ describe("API hooks", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/auth/signup", expect.objectContaining({ method: "POST", body: expect.stringContaining("display_name") }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/auth/login", expect.objectContaining({ body: JSON.stringify({ email: "mint@example.com", password: "secure123" }) }));
+  });
+
+  it.each([
+    "RESERVATION_EXPIRED",
+    "SLOT_CAPACITY_EXCEEDED",
+    "ORDER_STATE_CONFLICT",
+    "INVALID_TRANSITION",
+    "PORTIONS_LIMIT_EXCEEDED",
+    "PICKUP_NOT_SAME_DAY"
+  ])("translates %s to Thai", async (code) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ code, message: "english from backend" }, 409)));
+    const error = await requestJson("/api/v1/orders").catch((caught: ApiClientError) => caught);
+    expect((error as ApiClientError).message).toMatch(/[\u0E00-\u0E7F]/);
+    expect((error as ApiClientError).message).not.toContain("english");
+  });
+
+  describe("useFulfillmentTicket", () => {
+    afterEach(() => vi.useRealTimers());
+
+    const ticketUrl = `/api/v1/fulfillments/${order.order_id}`;
+
+    it("does not fetch until the order is paid", () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      renderHook(() => useFulfillmentTicket(order.order_id, false), { wrapper });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("treats 404 as no ticket yet and keeps polling", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(json({ code: "NOT_FOUND", message: "x" }, 404)));
+      vi.stubGlobal("fetch", fetchMock);
+      const { result } = renderHook(() => useFulfillmentTicket(order.order_id, true), { wrapper });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.data).toBeNull();
+      expect(result.current.isError).toBe(false);
+      expect(fetchMock).toHaveBeenCalledWith(ticketUrl, expect.any(Object));
+      await act(async () => { await vi.advanceTimersByTimeAsync(11_000); });
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+    });
+
+    it("stops polling once the ticket is picked up", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(json({ order_id: order.order_id, status: "PICKED_UP", queue_number: "12" })));
+      vi.stubGlobal("fetch", fetchMock);
+      const { result } = renderHook(() => useFulfillmentTicket(order.order_id, true), { wrapper });
+      await waitFor(() => expect(result.current.data?.queue_number).toBe("12"));
+      const calls = fetchMock.mock.calls.length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+      expect(fetchMock.mock.calls.length).toBe(calls);
+    });
+  });
+
+  describe("useOrder polling", () => {
+    afterEach(() => vi.useRealTimers());
+
+    const orderCalls = (fetchMock: ReturnType<typeof vi.fn>) => fetchMock.mock.calls.filter(([url]) => String(url).includes("/orders/")).length;
+
+    it("stops once the ticket shows pickup, because Order stays at PAID", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const fetchMock = vi.fn((url: string) =>
+        Promise.resolve(url.includes("/fulfillments/") ? json({ status: "PICKED_UP", queue_number: "1" }) : json({ ...order, status: "PAID" }))
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const { result } = renderHook(() => ({ order: useOrder(order.order_id), ticket: useFulfillmentTicket(order.order_id, true) }), { wrapper });
+      await waitFor(() => expect(result.current.ticket.data?.status).toBe("PICKED_UP"));
+      await act(async () => { await vi.advanceTimersByTimeAsync(16_000); });
+      const settled = orderCalls(fetchMock);
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+      expect(orderCalls(fetchMock)).toBe(settled);
+    });
+
+    it("stops after a 404 instead of hammering the backend", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const fetchMock = vi.fn(() => Promise.resolve(json({ code: "NOT_FOUND", message: "x" }, 404)));
+      vi.stubGlobal("fetch", fetchMock);
+      const { result } = renderHook(() => useOrder(order.order_id), { wrapper });
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      const calls = fetchMock.mock.calls.length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+      expect(fetchMock.mock.calls.length).toBe(calls);
+    });
+
+    it("polls faster during the Stripe return window", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const fetchMock = vi.fn(() => Promise.resolve(json({ ...order, status: "PENDING_PAYMENT" })));
+      vi.stubGlobal("fetch", fetchMock);
+      const { result } = renderHook(() => useOrder(order.order_id, { fastPoll: true }), { wrapper });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      const calls = fetchMock.mock.calls.length;
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+      expect(fetchMock.mock.calls.length).toBeGreaterThan(calls);
+    });
   });
 
   it("unwraps the fulfillment list envelope", async () => {
