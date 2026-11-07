@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AUTH_COOKIE, sessionCookieOptions } from "@/lib/auth";
 import { gatewayUrl } from "@/lib/gateway";
+import { crossSiteRejection } from "@/lib/request-guard";
 import type { LoginResponse, User } from "@/types";
 
 interface AuthTokenResponse {
@@ -12,11 +13,16 @@ interface AuthTokenResponse {
 
 // Exchanges credentials for an Auth Service token and keeps the token in an httpOnly cookie.
 export async function POST(request: Request) {
+  // Login CSRF: a cross-site form must not be able to sign the browser into another account.
+  const rejection = crossSiteRejection(request, { requireJson: true });
+  if (rejection) return rejection;
+
+  const clientIp = request.headers.get("x-forwarded-for");
   let upstream: Response;
   try {
     upstream = await fetch(`${gatewayUrl()}/api/v1/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(clientIp ? { "X-Forwarded-For": clientIp } : {}) },
       body: await request.text(),
       cache: "no-store"
     });

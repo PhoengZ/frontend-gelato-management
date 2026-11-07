@@ -12,17 +12,29 @@ export interface StoredNotification extends AppNotification {
 
 interface NotificationState {
   notifications: StoredNotification[];
-  /** Adds a notification once per source event id; returns false for a duplicate delivery. */
-  add: (notification: AppNotification) => boolean;
+  /** The account these notifications belong to. */
+  ownerId: string | null;
+  /** Not persisted: the choice lasts for the page's lifetime. */
+  soundMuted: boolean;
+  /**
+   * Adds a notification once per source event id; returns false for a duplicate delivery or
+   * when `ownerId` is no longer the current owner, i.e. a stream opened for a previous account.
+   */
+  add: (notification: AppNotification, ownerId: string) => boolean;
   markAllRead: () => void;
-  clear: () => void;
+  setSoundMuted: (soundMuted: boolean) => void;
+  adoptOwner: (userId: string) => void;
+  reset: () => void;
 }
 
 export const useNotificationStore = create<NotificationState>()(
   persist(
     (set, get) => ({
       notifications: [],
-      add: (notification) => {
+      ownerId: null,
+      soundMuted: false,
+      add: (notification, ownerId) => {
+        if (get().ownerId !== ownerId) return false;
         if (get().notifications.some((item) => item.id === notification.id)) return false;
         set((state) => ({
           notifications: [{ ...notification, read: false }, ...state.notifications].slice(0, MAX_NOTIFICATIONS)
@@ -30,13 +42,19 @@ export const useNotificationStore = create<NotificationState>()(
         return true;
       },
       markAllRead: () => set((state) => ({ notifications: state.notifications.map((item) => ({ ...item, read: true })) })),
-      clear: () => set({ notifications: [] })
+      setSoundMuted: (soundMuted) => set({ soundMuted }),
+      // Notifications saved before owners were recorded have an undefined owner and are dropped too.
+      adoptOwner: (userId) => set((state) => (state.ownerId === userId ? state : { ownerId: userId, notifications: [] })),
+      reset: () => set({ ownerId: null, notifications: [] })
     }),
-    { name: "gelatoflow-notifications" }
+    {
+      name: "gelatoflow-notifications",
+      partialize: (state) => ({ notifications: state.notifications, ownerId: state.ownerId })
+    }
   )
 );
 
-/** The queue number only reaches customers through the `order.ready` notification. */
+/** Fast path for a ready order; the Fulfillment ticket remains the source of truth. */
 export function useReadyNotification(orderId: string) {
   return useNotificationStore((state) =>
     state.notifications.find((item) => item.type === "order.ready" && item.data.order_id === orderId)

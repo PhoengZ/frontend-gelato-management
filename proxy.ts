@@ -16,7 +16,7 @@ export function proxy(request: NextRequest) {
   const claims = token ? decodeAccessToken(token) : null;
   if (!claims) {
     const login = new URL("/login", request.url);
-    login.searchParams.set("next", request.nextUrl.pathname);
+    login.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(login);
   }
   if (!rule.roles.includes(claims.role)) return NextResponse.redirect(new URL("/", request.url));

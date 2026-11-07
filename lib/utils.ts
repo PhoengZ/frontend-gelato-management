@@ -39,12 +39,30 @@ export function formatDateTime(value: string) {
 const SLOT_MINUTES = 15;
 const SLOT_COUNT = 8;
 
-/** Pickup times on 15-minute boundaries, starting at least one slot from now. */
+const bangkokDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" });
+
+export function isSameBangkokDay(a: Date, b: Date) {
+  return bangkokDay.format(a) === bangkokDay.format(b);
+}
+
+/**
+ * Pickup times on 15-minute boundaries, starting at least one slot from now. Order only accepts
+ * a pickup on the current calendar day in Asia/Bangkok, so the list can be short or empty.
+ */
 export function pickupSlots(now = new Date()) {
   const first = new Date(now);
   first.setSeconds(0, 0);
   first.setMinutes(Math.ceil(first.getMinutes() / SLOT_MINUTES) * SLOT_MINUTES + SLOT_MINUTES);
-  return Array.from({ length: SLOT_COUNT }, (_, index) => new Date(first.getTime() + index * SLOT_MINUTES * 60_000).toISOString());
+  return Array.from({ length: SLOT_COUNT }, (_, index) => new Date(first.getTime() + index * SLOT_MINUTES * 60_000))
+    .filter((slot) => isSameBangkokDay(slot, now))
+    .map((slot) => slot.toISOString());
+}
+
+/** `YYYY-MM-DD` for a date input, in the browser's calendar day rather than UTC's. */
+export function dateInputValue(date: Date) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 export const allergenLabels: Record<Allergen, string> = {

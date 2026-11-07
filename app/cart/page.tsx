@@ -6,8 +6,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Clock3, Loader2, Lock, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { ApiClientError, useCatalog, useCreateOrder, useSession } from "@/lib/api";
-import { cn, flavorTint, formatMinor, formatTime, pickupSlots } from "@/lib/utils";
+import { ApiClientError, cancelOrder, fetchOrder, useCatalog, useCreateOrder, useSession } from "@/lib/api";
+import { isFinalStatus } from "@/lib/order-status";
+import { cn, flavorTint, formatMinor, formatTime, isSameBangkokDay, pickupSlots } from "@/lib/utils";
 import { useCartStore } from "@/store/useCartStore";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
@@ -56,6 +57,12 @@ export default function CartPage() {
   const removeItem = useCartStore((state) => state.removeItem);
   const beginCheckout = useCartStore((state) => state.beginCheckout);
   const attachOrder = useCartStore((state) => state.attachOrder);
+  const clearCart = useCartStore((state) => state.clearCart);
+  const discardCheckout = useCartStore((state) => state.discardCheckout);
+  const setActiveOrder = useCartStore((state) => state.setActiveOrder);
+  const settleOrder = useCartStore((state) => state.settleOrder);
+  const unsettledOrderId = useCartStore((state) => state.unsettledOrderId);
+  const clearActiveOrder = useCartStore((state) => state.clearActiveOrder);
   const pendingCheckout = useCartStore((state) => state.checkout);
   const catalog = useCatalog();
   const createOrder = useCreateOrder();
@@ -65,6 +72,8 @@ export default function CartPage() {
   const [slots, setSlots] = useState<string[]>([]);
   const [pickupAt, setPickupAt] = useState("");
   const [redirecting, setRedirecting] = useState(false);
+  const [checkingPriorOrder, setCheckingPriorOrder] = useState(false);
+  const busy = createOrder.isPending || checkingPriorOrder;
   const total = items.reduce((sum, item) => sum + item.portions * item.unitPriceMinor, 0);
   const scoops = items.reduce((sum, item) => sum + item.portions, 0);
 
@@ -86,14 +95,71 @@ export default function CartPage() {
     const nextSlots = pickupSlots();
     // Keep a still-valid pickup time from an earlier attempt so a retry replays the same order.
     const previous = pendingCheckout?.order.pickup_at;
-    const keepPrevious = previous && new Date(previous).getTime() > Date.now();
+    const now = new Date();
+    const keepPrevious = previous && new Date(previous) > now && isSameBangkokDay(new Date(previous), now);
     setSlots(keepPrevious && !nextSlots.includes(previous) ? [previous, ...nextSlots] : nextSlots);
-    setPickupAt(keepPrevious ? previous : nextSlots[0]);
+    setPickupAt((keepPrevious ? previous : nextSlots[0]) ?? "");
     setCheckoutOpen(true);
   };
 
-  const pay = () => {
-    if (!items.length || !pickupAt || createOrder.isPending) return;
+  /**
+   * A customer who paid and closed the Stripe tab never reached the queue page, and may have
+   * edited the cart since. Returns true when checkout may proceed. An order that cannot be checked
+   * or cancelled blocks checkout, since a new order could charge the customer twice.
+   */
+  const settlePriorOrder = async (orderId: string) => {
+    const sameCheckout = pendingCheckout?.orderId === orderId;
+    const forget = () => {
+      settleOrder(orderId);
+      if (sameCheckout) discardCheckout();
+    };
+    setCheckingPriorOrder(true);
+    try {
+      const prior = await fetchOrder(orderId);
+      if (prior.status === "CANCELLED" || prior.status === "CANCEL_PENDING") {
+        forget();
+        return true;
+      }
+      if (prior.status === "PENDING_PAYMENT") {
+        if (sameCheckout && pendingCheckout.order.pickup_at === pickupAt) return true;
+        // Its Stripe session may still be open. A late payment on it is rejected and refunded.
+        await cancelOrder(orderId);
+        forget();
+        return true;
+      }
+      if (prior.status === "PAYMENT_CONFIRMING") setActiveOrder(orderId);
+      else {
+        // An edited cart is a new intent, so it stays for the customer to review.
+        if (sameCheckout) clearCart();
+        settleOrder(orderId);
+        if (isFinalStatus(prior.status)) clearActiveOrder(orderId);
+        else setActiveOrder(orderId);
+      }
+      toast.info("คำสั่งซื้อก่อนหน้าชำระเงินแล้ว ไม่ต้องชำระซ้ำ");
+      router.push(`/queue/${orderId}`);
+      return false;
+    } catch (error) {
+      const status = error instanceof ApiClientError ? error.status : 0;
+      if (status === 404) {
+        forget();
+        return true;
+      }
+      if (status === 401) {
+        toast.error("กรุณาเข้าสู่ระบบก่อนชำระเงิน");
+        router.push("/login?next=/cart");
+        return false;
+      }
+      toast.error("ตรวจสอบคำสั่งซื้อก่อนหน้าไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+      return false;
+    } finally {
+      setCheckingPriorOrder(false);
+    }
+  };
+
+  const pay = async () => {
+    if (!items.length || !pickupAt || busy) return;
+    const priorOrderId = unsettledOrderId ?? pendingCheckout?.orderId;
+    if (priorOrderId && !(await settlePriorOrder(priorOrderId))) return;
     const checkout = beginCheckout(pickupAt);
     createOrder.mutate(
       { order: checkout.order, idempotencyKey: checkout.idempotencyKey },
@@ -112,6 +178,18 @@ export default function CartPage() {
           if (error instanceof ApiClientError && error.status === 401) {
             toast.error("กรุณาเข้าสู่ระบบก่อนชำระเงิน");
             router.push("/login?next=/cart");
+            return;
+          }
+          if (error instanceof ApiClientError && error.code === "RESERVATION_EXPIRED") {
+            // This key can never succeed again; dropping it gives the next attempt a new one.
+            discardCheckout();
+            toast.error(error.message);
+            return;
+          }
+          if (error instanceof ApiClientError && error.code === "PICKUP_NOT_SAME_DAY") {
+            // Reopening the sheet offers the new day's slots.
+            setCheckoutOpen(false);
+            toast.error(error.message);
             return;
           }
           if (error instanceof ApiClientError && stockConflictCodes.includes(error.code)) {
@@ -221,14 +299,14 @@ export default function CartPage() {
         </div>
       </div>
 
-      <Sheet open={checkoutOpen} onOpenChange={(open) => !createOrder.isPending && setCheckoutOpen(open)}>
+      <Sheet open={checkoutOpen} onOpenChange={(open) => !busy && setCheckoutOpen(open)}>
         <SheetContent>
           <SheetHeader>
             <SheetTitle>ชำระเงิน</SheetTitle>
             <SheetDescription>Stripe Checkout · PromptPay</SheetDescription>
           </SheetHeader>
 
-          <fieldset disabled={createOrder.isPending}>
+          <fieldset disabled={busy}>
             <legend className="flex items-center gap-1.5 text-sm font-medium">
               <Clock3 className="h-4 w-4 text-subtle" /> เลือกเวลารับสินค้า
             </legend>
@@ -239,6 +317,11 @@ export default function CartPage() {
                 </Chip>
               ))}
             </div>
+            {!slots.length && (
+              <p role="alert" className="mt-2.5 rounded-2xl bg-pink-soft px-4 py-3 text-sm">
+                วันนี้ไม่มีรอบรับสินค้าเหลือแล้ว รับสินค้าได้เฉพาะภายในวันที่สั่งเท่านั้น กรุณาสั่งใหม่อีกครั้งพรุ่งนี้
+              </p>
+            )}
           </fieldset>
 
           <div className="mt-4 space-y-2 rounded-3xl border border-line bg-white p-4">
@@ -250,8 +333,8 @@ export default function CartPage() {
           </div>
           <p className="mt-3 text-xs leading-relaxed text-subtle">ราคาสุดท้ายคำนวณจากราคาเมนูล่าสุด และจองสต็อกไว้ให้ระหว่างชำระเงิน</p>
 
-          <Button size="lg" className="mt-4 w-full" onClick={pay} disabled={!pickupAt || createOrder.isPending}>
-            {createOrder.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> กำลังจองสกู๊ปให้คุณ…</> : `ชำระเงิน ${formatMinor(total)}`}
+          <Button size="lg" className="mt-4 w-full" onClick={() => void pay()} disabled={!pickupAt || busy}>
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> กำลังจองสกู๊ปให้คุณ…</> : `ชำระเงิน ${formatMinor(total)}`}
           </Button>
           <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-subtle">
             <Lock className="h-3.5 w-3.5" /> ปลอดภัยด้วย Stripe · ป้องกันการชำระซ้ำ

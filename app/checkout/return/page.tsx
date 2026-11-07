@@ -7,17 +7,20 @@ import { toast } from "sonner";
 import { useCartStore } from "@/store/useCartStore";
 
 // Payment's Stripe success/cancel URLs are fixed per deployment and carry no order ID,
-// so the pending order is recovered from the cart. A success redirect is not proof of
-// payment; the order page polls Order for the real status.
+// so the pending order is recovered from local state. A success redirect is not proof of
+// payment: the marker only tells the order page to wait briefly for the webhook while it
+// polls Order for the real status. A timestamp keeps a reload from reopening that window.
 export default function CheckoutReturnPage() {
   const router = useRouter();
-  const orderId = useCartStore((state) => state.checkout?.orderId);
+  const orderId = useCartStore((state) => state.checkout?.orderId ?? state.activeOrderId);
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has("cancelled")) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("cancelled")) {
       toast.info("ยกเลิกการชำระเงินแล้ว", { description: "สต็อกยังถูกจองไว้ชั่วคราว ชำระต่อหรือยกเลิกคำสั่งซื้อได้" });
     }
-    router.replace(orderId ? `/queue/${orderId}` : "/");
+    const marker = params.has("session_id") && !params.has("cancelled") ? `?returned_at=${Date.now()}` : "";
+    router.replace(orderId ? `/queue/${orderId}${marker}` : "/");
   }, [orderId, router]);
 
   return (

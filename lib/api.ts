@@ -1,6 +1,8 @@
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { isFinalStatus } from "@/lib/order-status";
+import { adoptSessionUser, resetAccountState } from "@/store/account";
 import type {
   AnalyticsPeriod,
   AnalyticsSummary,
@@ -46,7 +48,13 @@ const friendlyMessages: Record<string, string> = {
   BATCH_CODE_CONFLICT: "รหัส Batch นี้ถูกใช้แล้ว",
   DEPENDENCY_UNAVAILABLE: "บริการที่เกี่ยวข้องไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้ง",
   DEPENDENCY_TIMEOUT: "บริการที่เกี่ยวข้องตอบสนองช้า กรุณาลองใหม่อีกครั้ง",
-  GATEWAY_UNAVAILABLE: "เชื่อมต่อระบบหลังบ้านไม่สำเร็จ"
+  GATEWAY_UNAVAILABLE: "เชื่อมต่อระบบหลังบ้านไม่สำเร็จ",
+  RESERVATION_EXPIRED: "หมดเวลาจองสต็อกแล้ว กรุณากดชำระเงินอีกครั้งเพื่อเริ่มคำสั่งซื้อใหม่",
+  SLOT_CAPACITY_EXCEEDED: "รอบรับสินค้านี้เต็มแล้ว กรุณาเลือกเวลาอื่น",
+  ORDER_STATE_CONFLICT: "สถานะคำสั่งซื้อเปลี่ยนไปแล้ว กรุณารีเฟรชแล้วลองอีกครั้ง",
+  INVALID_TRANSITION: "เปลี่ยนสถานะออเดอร์นี้ไม่ได้ กรุณารีเฟรชรายการ",
+  PORTIONS_LIMIT_EXCEEDED: "จำนวนสกู๊ปเกินจำนวนสูงสุดต่อคำสั่งซื้อ กรุณาลดจำนวนในตะกร้า",
+  PICKUP_NOT_SAME_DAY: "เลือกเวลารับสินค้าได้เฉพาะวันนี้เท่านั้น กรุณาเลือกเวลาใหม่"
 };
 
 export class ApiClientError extends Error implements ApiError {
@@ -114,12 +122,18 @@ export function useSession() {
   });
 }
 
+/** Rebinds local state before the new user becomes visible, so nothing renders another account's data. */
+function establishSession(queryClient: ReturnType<typeof useQueryClient>, user: User) {
+  if (adoptSessionUser(user.id)) queryClient.removeQueries({ predicate: ({ queryKey }) => queryKey[0] !== "session" });
+  queryClient.setQueryData(["session"], user);
+}
+
 export function useLogin() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (credentials: LoginRequest) =>
       requestJson<LoginResponse>("/api/v1/auth/login", { method: "POST", body: JSON.stringify(credentials) }),
-    onSuccess: (session) => queryClient.setQueryData(["session"], session.user)
+    onSuccess: (session) => establishSession(queryClient, session.user)
   });
 }
 
@@ -134,7 +148,7 @@ export function useSignup() {
         body: JSON.stringify({ email: input.email, password: input.password } satisfies LoginRequest)
       });
     },
-    onSuccess: (session) => queryClient.setQueryData(["session"], session.user)
+    onSuccess: (session) => establishSession(queryClient, session.user)
   });
 }
 
@@ -142,7 +156,10 @@ export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => requestJson<void>("/api/v1/auth/logout", { method: "POST" }),
-    onSuccess: () => queryClient.clear()
+    onSuccess: () => {
+      resetAccountState();
+      queryClient.clear();
+    }
   });
 }
 
@@ -175,35 +192,80 @@ export function useCreateOrder() {
 }
 
 const settlingStatuses: OrderStatus[] = ["PENDING_PAYMENT", "CANCEL_PENDING", "PAYMENT_CONFIRMING"];
-const finalStatuses: OrderStatus[] = ["COMPLETED", "CANCELLED"];
+const finalTicketStatuses: FulfillmentStatus[] = ["PICKED_UP", "CANCELLED"];
+const FAST_POLL_MS = 1_500;
+const TICKET_POLL_MS = 5_000;
 
-export function useOrder(orderId: string) {
+export function fetchOrder(orderId: string) {
+  return requestJson<Order>(`/api/v1/orders/${encodeURIComponent(orderId)}`);
+}
+
+function isTerminalQueryError(error: unknown) {
+  return error instanceof ApiClientError && (error.status === 401 || error.status === 404);
+}
+
+const ticketKey = (orderId: string) => ["fulfillment", orderId];
+
+export function useOrder(orderId: string, { fastPoll = false }: { fastPoll?: boolean } = {}) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ["order", orderId],
-    queryFn: () => requestJson<Order>(`/api/v1/orders/${encodeURIComponent(orderId)}`),
+    queryFn: () => fetchOrder(orderId),
     enabled: Boolean(orderId),
     refetchInterval: (query) => {
+      if (isTerminalQueryError(query.state.error)) return false;
       const status = query.state.data?.status;
+      if (status && isFinalStatus(status)) return false;
+      // Order itself stays at PAID after pickup, so a finished ticket ends its polling too.
+      const ticket = queryClient.getQueryData<Fulfillment | null>(ticketKey(orderId));
+      if (ticket && finalTicketStatuses.includes(ticket.status)) return false;
+      if (fastPoll && (!status || settlingStatuses.includes(status))) return FAST_POLL_MS;
       if (!status) return 3_000;
-      if (finalStatuses.includes(status)) return false;
       return settlingStatuses.includes(status) ? 3_000 : 15_000;
     }
+  });
+}
+
+export function cancelOrder(orderId: string) {
+  return requestJson<void>(`/api/v1/orders/${encodeURIComponent(orderId)}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason: "CUSTOMER_REQUEST" })
   });
 }
 
 export function useCancelOrder() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (orderId: string) =>
-      requestJson<void>(`/api/v1/orders/${encodeURIComponent(orderId)}/cancel`, {
-        method: "POST",
-        body: JSON.stringify({ reason: "CUSTOMER_REQUEST" })
-      }),
+    mutationFn: cancelOrder,
     onSettled: (_data, _error, orderId) => void queryClient.invalidateQueries({ queryKey: ["order", orderId] })
   });
 }
 
 // Fulfillment
+
+/**
+ * The customer's view of the kitchen: the ticket gives the queue number and progress, because
+ * Order never moves past PAID. The ticket is created asynchronously, so 404 means "not yet".
+ */
+export function useFulfillmentTicket(orderId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ticketKey(orderId),
+    queryFn: async () => {
+      try {
+        return await requestJson<Fulfillment>(`/api/v1/fulfillments/${encodeURIComponent(orderId)}`);
+      } catch (error) {
+        if (error instanceof ApiClientError && error.status === 404) return null;
+        throw error;
+      }
+    },
+    enabled: enabled && Boolean(orderId),
+    refetchInterval: (query) => {
+      if (isTerminalQueryError(query.state.error)) return false;
+      const ticket = query.state.data;
+      return ticket && finalTicketStatuses.includes(ticket.status) ? false : TICKET_POLL_MS;
+    }
+  });
+}
 
 export function useFulfillments(statuses: FulfillmentStatus[] = ["PREPARING", "READY_FOR_PICKUP"]) {
   return useQuery({

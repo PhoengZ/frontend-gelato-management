@@ -17,6 +17,15 @@ export interface PendingCheckout {
 interface CartState {
   items: CartItem[];
   checkout: PendingCheckout | null;
+  /** The account this state belongs to; null for an anonymous cart. */
+  ownerId: string | null;
+  /** The order the customer is following, kept apart from the cart so paying does not lose it. */
+  activeOrderId: string | null;
+  /**
+   * The order whose payment result the customer has not seen. Unlike `checkout` it survives cart
+   * edits, because the customer may already have paid for it in a closed Stripe tab.
+   */
+  unsettledOrderId: string | null;
   addItem: (flavor: MenuFlavor) => void;
   removeItem: (flavorId: string) => void;
   updatePortion: (flavorId: string, portions: number) => void;
@@ -24,6 +33,12 @@ interface CartState {
   beginCheckout: (pickupAt: string) => PendingCheckout;
   attachOrder: (orderId: string) => void;
   discardCheckout: () => void;
+  settleOrder: (orderId: string) => void;
+  setActiveOrder: (orderId: string) => void;
+  clearActiveOrder: (orderId: string) => void;
+  /** Binds the state to a signed-in user; returns true when another user's data was discarded. */
+  adoptOwner: (userId: string) => boolean;
+  reset: () => void;
   getTotalMinor: () => number;
 }
 
@@ -32,6 +47,9 @@ export const useCartStore = create<CartState>()(
     (set, get) => ({
       items: [],
       checkout: null,
+      ownerId: null,
+      activeOrderId: null,
+      unsettledOrderId: null,
       addItem: (flavor) => {
         if (!flavor.active || flavor.available_portions <= 0) return;
 
@@ -91,17 +109,39 @@ export const useCartStore = create<CartState>()(
         return checkout;
       },
       attachOrder: (orderId) =>
-        set((state) => (state.checkout ? { checkout: { ...state.checkout, orderId } } : state)),
+        set((state) => (state.checkout ? { checkout: { ...state.checkout, orderId }, activeOrderId: orderId, unsettledOrderId: orderId } : state)),
       discardCheckout: () => set({ checkout: null }),
+      settleOrder: (orderId) => set((state) => (state.unsettledOrderId === orderId ? { unsettledOrderId: null } : state)),
+      setActiveOrder: (orderId) => set({ activeOrderId: orderId }),
+      clearActiveOrder: (orderId) => set((state) => (state.activeOrderId === orderId ? { activeOrderId: null } : state)),
+      adoptOwner: (userId) => {
+        const { ownerId } = get();
+        if (ownerId === userId) return false;
+        // Only an anonymous cart's items carry over; a checkout or order always has a known owner.
+        if (ownerId === null) {
+          set({ ownerId: userId, checkout: null, activeOrderId: null, unsettledOrderId: null });
+          return false;
+        }
+        set({ ownerId: userId, items: [], checkout: null, activeOrderId: null, unsettledOrderId: null });
+        return true;
+      },
+      reset: () => set({ ownerId: null, items: [], checkout: null, activeOrderId: null, unsettledOrderId: null }),
       getTotalMinor: () =>
         get().items.reduce((total, item) => total + item.unitPriceMinor * item.portions, 0)
     }),
     {
       name: "gelatoflow-cart",
-      version: 2,
-      // v1 carts held demo flavor IDs and baht prices that the backend does not know.
-      migrate: () => ({ items: [], checkout: null }),
-      partialize: (state) => ({ items: state.items, checkout: state.checkout })
+      version: 3,
+      migrate: (persisted, version) => ({
+        // v1 carts held demo flavor IDs and baht prices that the backend does not know.
+        items: version === 2 ? ((persisted as { items?: CartItem[] }).items ?? []) : [],
+        // v2 recorded no owner, so its checkout may be another account's order.
+        checkout: null,
+        ownerId: null,
+        activeOrderId: null,
+        unsettledOrderId: null
+      }),
+      partialize: (state) => ({ items: state.items, checkout: state.checkout, ownerId: state.ownerId, activeOrderId: state.activeOrderId, unsettledOrderId: state.unsettledOrderId })
     }
   )
 );

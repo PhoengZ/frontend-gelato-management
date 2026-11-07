@@ -6,12 +6,13 @@ import Link from "next/link";
 import { Archive, BarChart3, Boxes, Loader2, PackagePlus, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, Panel, StatTile } from "@/components/backoffice/PageParts";
+import { StaleNotice, useLoginOnUnauthorized } from "@/components/StaleNotice";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useArchiveFlavor, useCreateBatch, useCreateFlavor, useInventory, useRecordWaste, useUpdateFlavor } from "@/lib/api";
-import { allergenLabels, cn, flavorTint, formatDateTime, formatMinor } from "@/lib/utils";
+import { allergenLabels, cn, dateInputValue, flavorTint, formatDateTime, formatMinor } from "@/lib/utils";
 import { ALLERGENS, WASTE_REASONS, type Allergen, type BatchStatus, type CreateFlavorRequest, type MenuFlavor, type WasteReason } from "@/types";
 
 const wasteReasonLabels: Record<WasteReason, string> = {
@@ -33,10 +34,6 @@ const EXPIRING_WINDOW_MS = 48 * 60 * 60_000;
 /** Baht entered in a form → integer satang. */
 function toMinor(baht: FormDataEntryValue | null) {
   return Math.round(Number(baht) * 100);
-}
-
-function dateInputValue(date: Date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function dateTimeInputValue(date: Date) {
@@ -129,6 +126,7 @@ function FlavorDrawer({ flavor, open, onOpenChange }: { flavor: MenuFlavor | nul
 
 export default function ManagerPage() {
   const inventory = useInventory();
+  const redirectingToLogin = useLoginOnUnauthorized(inventory.error);
   const createBatch = useCreateBatch();
   const archiveFlavor = useArchiveFlavor();
   const recordWaste = useRecordWaste();
@@ -177,8 +175,8 @@ export default function ManagerPage() {
     }
   };
 
-  if (inventory.isLoading) return <main className="grid min-h-[70vh] place-items-center"><Loader2 className="h-8 w-8 animate-spin text-pink-strong" /></main>;
-  if (inventory.isError || !inventory.data) {
+  if (inventory.isLoading || redirectingToLogin) return <main className="grid min-h-[70vh] place-items-center"><Loader2 className="h-8 w-8 animate-spin text-pink-strong" /></main>;
+  if (!inventory.data) {
     return (
       <main className="grid min-h-[70vh] place-items-center px-6 text-center">
         <div>
@@ -202,6 +200,7 @@ export default function ManagerPage() {
 
   return (
     <main className="mx-auto max-w-[76rem] space-y-7 px-6 pb-12 pt-8 lg:px-10">
+      {inventory.isError && <StaleNotice />}
       <PageHeader
         title="เมนูและคลังสินค้า"
         description="เพิ่ม แก้ไข และเก็บเมนูเข้าคลัง พร้อมจัดการ Batch สต็อก และของเสีย"
