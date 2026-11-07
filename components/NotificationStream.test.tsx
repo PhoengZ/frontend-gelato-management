@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Toaster } from "sonner";
 import { CustomerNotification } from "@/components/CustomerNotification";
 import { NotificationStream } from "@/components/NotificationStream";
 import { useLogin, useLogout } from "@/lib/api";
@@ -81,6 +82,27 @@ describe("NotificationStream", () => {
     expect(FakeEventSource.instances[0].url).toBe("/api/v1/notifications/stream");
     act(() => FakeEventSource.instances[0].emit("e1"));
     expect(useNotificationStore.getState().notifications).toHaveLength(1);
+  });
+
+  it("shows Thai copy in the toast instead of the server's English text", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><Toaster /><NotificationStream /></QueryClientProvider>);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() => FakeEventSource.instances[0].emit("e1"));
+    expect(await screen.findByText("เจลาโตของคุณพร้อมแล้ว มารับที่เคาน์เตอร์ได้เลย")).toBeInTheDocument();
+    expect(screen.queryByText("ready")).not.toBeInTheDocument();
+  });
+
+  it("shows Thai copy and the queue number once in the notification panel", async () => {
+    useNotificationStore.setState({
+      ownerId: "user-a",
+      notifications: [{ id: "n1", type: "order.ready", message: "Your gelato order is ready for pickup!", occurred_at: "2026-11-07T10:00:00Z", data: { order_id: "order-a", queue_number: "03" }, read: false }]
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><CustomerNotification /></QueryClientProvider>);
+    await userEvent.click(await screen.findByRole("button", { name: /แจ้งเตือนสถานะคิว/ }));
+    expect(await screen.findByText("คิว #03 พร้อมแล้ว มารับที่เคาน์เตอร์ได้เลย")).toBeInTheDocument();
+    expect(screen.queryByText(/Your gelato order/)).not.toBeInTheDocument();
   });
 
   it("opens no stream for staff", async () => {
