@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import ManagerPage from "@/app/manager/page";
 
 const useInventory = vi.fn();
@@ -34,6 +34,21 @@ describe("ManagerPage", () => {
     useInventory.mockReturnValue({ ...loaded, isError: true, error: failure(401) });
     render(<ManagerPage />);
     expect(replace).toHaveBeenCalledWith("/login?next=%2Fmanager");
+  });
+
+  it("UC-03 shows produced, reserved, sold, wasted and available portions per batch", () => {
+    const batch = {
+      id: "b1", batch_code: "GF-01", flavor_id: "f1", production_date: "2026-11-07", expires_at: "2026-11-10T10:00:00Z",
+      initial_portions: 40, available_portions: 21, reserved_portions: 6, sold_portions: 10, wasted_portions: 3,
+      unit_cost_minor: 2000, currency: "THB", status: "ACTIVE", created_at: "2026-11-07T00:00:00Z", updated_at: "2026-11-07T00:00:00Z"
+    };
+    useInventory.mockReturnValue({ ...loaded, data: { flavors: [], batches: [batch] } });
+    render(<ManagerPage />);
+    const table = screen.getByRole("table", { name: "Batch ทั้งหมด" });
+    const headers = within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
+    expect(headers.slice(-5)).toEqual(["ผลิตทั้งหมด", "จอง", "ขายแล้ว", "ของเสีย", "คงเหลือพร้อมขาย"]);
+    const cells = within(within(table).getByRole("row", { name: /GF-01/ })).getAllByRole("cell").map((cell) => cell.textContent);
+    expect(cells.slice(-5)).toEqual(["40", "6", "10", "3", "21"]);
   });
 
   it("U09 still shows the error card when nothing has loaded", () => {

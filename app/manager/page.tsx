@@ -298,11 +298,12 @@ export default function ManagerPage() {
 
       <Panel title="Batch ทั้งหมด" description={`${activeBatches.length} Batch ที่ใช้งานอยู่`} icon={<Boxes className="h-5 w-5" />}>
         <div className="-mx-6 overflow-x-auto">
-          <table className="w-full min-w-[880px] text-left text-sm">
+          <table aria-label="Batch ทั้งหมด" className="w-full min-w-[960px] text-left text-sm">
             <thead className="border-b border-line text-xs text-subtle">
               <tr>
                 <th className="py-3 pl-6 font-medium">Batch</th><th className="font-medium">รสชาติ</th><th className="font-medium">ผลิต</th><th className="font-medium">หมดอายุ</th><th className="font-medium">สถานะ</th>
-                <th className="text-right font-medium">พร้อมขาย</th><th className="text-right font-medium">จอง</th><th className="text-right font-medium">ขายแล้ว</th><th className="pr-6 text-right font-medium">ของเสีย</th>
+                {/* Portion counters come straight from Batch Inventory, the owner of stock. */}
+                <th className="text-right font-medium">ผลิตทั้งหมด</th><th className="text-right font-medium">จอง</th><th className="text-right font-medium">ขายแล้ว</th><th className="text-right font-medium">ของเสีย</th><th className="pr-6 text-right font-medium">คงเหลือพร้อมขาย</th>
               </tr>
             </thead>
             <tbody>
@@ -315,10 +316,11 @@ export default function ManagerPage() {
                     <td className="text-subtle">{batch.production_date}</td>
                     <td className={cn(soon ? "font-medium text-pink-strong" : "text-subtle")}>{formatDateTime(batch.expires_at)}</td>
                     <td><Badge tone={batchTone[batch.status]}>{batch.status}</Badge></td>
-                    <td className="text-right font-semibold tabular-nums">{batch.available_portions} / {batch.initial_portions}</td>
+                    <td className="text-right tabular-nums">{batch.initial_portions}</td>
                     <td className="text-right tabular-nums">{batch.reserved_portions}</td>
                     <td className="text-right tabular-nums">{batch.sold_portions}</td>
-                    <td className="pr-6 text-right tabular-nums">{batch.wasted_portions}</td>
+                    <td className="text-right tabular-nums">{batch.wasted_portions}</td>
+                    <td className="pr-6 text-right font-semibold tabular-nums">{batch.available_portions}</td>
                   </tr>
                 );
               })}
