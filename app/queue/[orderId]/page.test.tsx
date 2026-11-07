@@ -128,6 +128,15 @@ describe("QueueTracker", () => {
       expect(screen.getByText("รับสินค้าแล้ว")).toBeInTheDocument();
     });
 
+    it("shows a queued ticket as paid and waiting in the kitchen queue, with its number", () => {
+      useOrder.mockReturnValue(loaded("PAID"));
+      useFulfillmentTicket.mockReturnValue({ data: { status: "QUEUED", queue_number: "05" } });
+      render(<QueueTracker orderId={orderId} />);
+      expect(screen.getByLabelText("คิว 05")).toBeInTheDocument();
+      expect(screen.getByText("รอคิวในครัว")).toBeInTheDocument();
+      expect(screen.getByText(/ชำระเงินเรียบร้อยแล้ว/)).toBeInTheDocument();
+    });
+
     it("keeps PAID while the ticket does not exist yet", () => {
       useOrder.mockReturnValue(loaded("PAID"));
       useFulfillmentTicket.mockReturnValue({ data: null });

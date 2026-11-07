@@ -1,7 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { deriveOrderStatus, isFinalStatus, isPaidOrLater } from "@/lib/order-status";
+import { deriveOrderStatus, isFinalStatus, isPaidOrLater, isWaitingInQueue } from "@/lib/order-status";
+
+describe("isWaitingInQueue", () => {
+  it("is true for a paid order whose ticket is queued in the kitchen", () => {
+    expect(isWaitingInQueue("PAID", "QUEUED")).toBe(true);
+  });
+
+  it("is false before payment, once preparation starts, or without a ticket", () => {
+    expect(isWaitingInQueue("PENDING_PAYMENT", "QUEUED")).toBe(false);
+    expect(isWaitingInQueue("CANCELLED", "QUEUED")).toBe(false);
+    expect(isWaitingInQueue("PAID", "PREPARING")).toBe(false);
+    expect(isWaitingInQueue("PAID", null)).toBe(false);
+  });
+});
 
 describe("deriveOrderStatus", () => {
+  it("keeps a queued ticket at PAID: paid and waiting for the kitchen", () => {
+    expect(deriveOrderStatus("PAID", "QUEUED", false)).toBe("PAID");
+    expect(deriveOrderStatus("PAID", "QUEUED", true)).toBe("READY_FOR_PICKUP");
+  });
+
   it("derives kitchen progress from the ticket because Order stays at PAID", () => {
     expect(deriveOrderStatus("PAID", undefined, false)).toBe("PAID");
     expect(deriveOrderStatus("PAID", null, false)).toBe("PAID");
