@@ -4,11 +4,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BarChart3, Boxes, ChefHat, LogOut, ShieldCheck, Store } from "lucide-react";
+import { NotificationBell } from "@/components/CustomerNotification";
 import { useLogout, useSession } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import logo from "@/public/logo.png";
 
 const baseItems = [{ href: "/staff", label: "ครัว", description: "ออเดอร์และคิว", icon: ChefHat }];
+const BACKOFFICE_ROLES = ["STAFF", "MANAGER"] as const;
+const BELL_LABEL = "แจ้งเตือนสต็อก";
+
 const managerItems = [
   { href: "/manager", label: "เมนูและคลังสินค้า", description: "เมนู · Batch · ของเสีย", icon: Boxes },
   { href: "/analytics", label: "รายงาน", description: "ยอดขายและของเสีย", icon: BarChart3 }
@@ -29,9 +33,12 @@ export function BackofficeShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-canvas md:grid md:grid-cols-[16rem_minmax(0,1fr)]">
       <aside className="sticky top-0 hidden h-screen flex-col gap-7 border-r border-line bg-white px-4 pb-5 pt-6 md:flex">
         <div className="space-y-2.5 px-2">
-          <Link href="/" aria-label="Gelatte home">
-            <Image src={logo} alt="Gelatte" priority className="h-9 w-auto" />
-          </Link>
+          <div className="flex items-center justify-between gap-2">
+            <Link href="/" aria-label="Gelatte home">
+              <Image src={logo} alt="Gelatte" priority className="h-9 w-auto" />
+            </Link>
+            <NotificationBell roles={[...BACKOFFICE_ROLES]} label={BELL_LABEL} />
+          </div>
           <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-subtle">
             <ShieldCheck className="h-3.5 w-3.5" /> Backoffice
           </p>
@@ -78,9 +85,12 @@ export function BackofficeShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-40 border-b border-line bg-white px-4 py-3 md:hidden">
           <div className="flex items-center justify-between">
             <Image src={logo} alt="Gelatte" className="h-8 w-auto" />
-            <button onClick={logoutNow} className="grid h-9 w-9 place-items-center rounded-full hover:bg-ink/5" aria-label="ออกจากระบบ">
-              <LogOut className="h-[18px] w-[18px]" />
-            </button>
+            <div className="flex items-center gap-1">
+              <NotificationBell roles={[...BACKOFFICE_ROLES]} label={BELL_LABEL} />
+              <button onClick={logoutNow} className="grid h-9 w-9 place-items-center rounded-full hover:bg-ink/5" aria-label="ออกจากระบบ">
+                <LogOut className="h-[18px] w-[18px]" />
+              </button>
+            </div>
           </div>
           <nav className="mt-3 flex gap-2 overflow-x-auto pb-1">
             {items.map(({ href, label, icon: Icon }) => (
