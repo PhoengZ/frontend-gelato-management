@@ -248,17 +248,19 @@ export function useCancelOrder() {
  * The customer's view of the kitchen: the ticket gives the queue number and progress, because
  * Order never moves past PAID. The ticket is created asynchronously, so 404 means "not yet".
  */
+async function fetchTicket(orderId: string) {
+  try {
+    return await requestJson<Fulfillment>(`/api/v1/fulfillments/${encodeURIComponent(orderId)}`);
+  } catch (error) {
+    if (error instanceof ApiClientError && error.status === 404) return null;
+    throw error;
+  }
+}
+
 export function useFulfillmentTicket(orderId: string, enabled: boolean) {
   return useQuery({
     queryKey: ticketKey(orderId),
-    queryFn: async () => {
-      try {
-        return await requestJson<Fulfillment>(`/api/v1/fulfillments/${encodeURIComponent(orderId)}`);
-      } catch (error) {
-        if (error instanceof ApiClientError && error.status === 404) return null;
-        throw error;
-      }
-    },
+    queryFn: () => fetchTicket(orderId),
     enabled: enabled && Boolean(orderId),
     refetchInterval: (query) => {
       if (isTerminalQueryError(query.state.error)) return false;
@@ -268,7 +270,23 @@ export function useFulfillmentTicket(orderId: string, enabled: boolean) {
   });
 }
 
-export function useFulfillments(statuses: FulfillmentStatus[] = ["PREPARING", "READY_FOR_PICKUP"]) {
+/**
+ * Staff lookup of one ticket by order id, in any status (the kitchen list leaves out picked-up
+ * and cancelled tickets). Null means no such ticket; null `orderId` disables the query.
+ */
+export function useFulfillmentLookup(orderId: string | null) {
+  return useQuery({
+    queryKey: ticketKey(orderId ?? ""),
+    queryFn: () => fetchTicket(orderId ?? ""),
+    enabled: Boolean(orderId),
+    refetchInterval: (query) => {
+      const ticket = query.state.data;
+      return query.state.error || (ticket && finalTicketStatuses.includes(ticket.status)) ? false : TICKET_POLL_MS;
+    }
+  });
+}
+
+export function useFulfillments(statuses: FulfillmentStatus[] = ["QUEUED", "PREPARING", "READY_FOR_PICKUP"]) {
   return useQuery({
     queryKey: ["fulfillments", statuses],
     queryFn: async () =>
@@ -285,7 +303,21 @@ export function useUpdateFulfillmentStatus() {
         method: "PATCH",
         body: JSON.stringify({ status } satisfies UpdateFulfillmentStatusRequest)
       }),
-    onSuccess: () => invalidate(queryClient, ["fulfillments"])
+    onSuccess: () => invalidate(queryClient, ["fulfillments", "fulfillment"])
+  });
+}
+
+/**
+ * Counter cancellation of a PAID order whose ticket is still QUEUED; Order returns the stock.
+ * The demo issues no refund here, the store arranges it. 409 ORDER_PREPARATION_STARTED means
+ * the kitchen got there first.
+ */
+export function useStoreCancelOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (orderId: string) =>
+      requestJson<Order>(`/api/v1/orders/${encodeURIComponent(orderId)}/store-cancel`, { method: "POST", body: "{}" }),
+    onSettled: () => invalidate(queryClient, ["fulfillments", "fulfillment", "inventory", "catalog"])
   });
 }
 

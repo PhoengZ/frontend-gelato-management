@@ -2,7 +2,7 @@ import type { PropsWithChildren } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiClientError, requestJson, useCatalog, useCreateOrder, useFulfillments, useFulfillmentTicket, useOrder, useSignup, withAvailability } from "@/lib/api";
+import { ApiClientError, requestJson, useCatalog, useCreateOrder, useFulfillmentLookup, useFulfillments, useFulfillmentTicket, useOrder, useSignup, useStoreCancelOrder, withAvailability } from "@/lib/api";
 import type { Flavor } from "@/types";
 
 function wrapper({ children }: PropsWithChildren) {
@@ -196,12 +196,51 @@ describe("API hooks", () => {
     });
   });
 
-  it("unwraps the fulfillment list envelope", async () => {
+  it("loads queued, preparing and ready tickets and unwraps the list envelope", async () => {
     const fetchMock = vi.fn().mockResolvedValue(json({ items: [{ order_id: "o1" }] }));
     vi.stubGlobal("fetch", fetchMock);
     const { result } = renderHook(() => useFulfillments(), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/fulfillments?status=PREPARING,READY_FOR_PICKUP", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/fulfillments?status=QUEUED,PREPARING,READY_FOR_PICKUP", expect.any(Object));
     expect(result.current.data).toEqual([{ order_id: "o1" }]);
+  });
+
+  it("cancels a queued order for the store with an empty body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ ...order, status: "CANCELLED" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useStoreCancelOrder(), { wrapper });
+    await act(async () => { await result.current.mutateAsync(order.order_id); });
+    expect(fetchMock).toHaveBeenCalledWith(`/api/v1/orders/${order.order_id}/store-cancel`, expect.objectContaining({ method: "POST", body: "{}" }));
+  });
+
+  it("surfaces ORDER_PREPARATION_STARTED from a store cancel", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ code: "ORDER_PREPARATION_STARTED", message: "x" }, 409)));
+    const { result } = renderHook(() => useStoreCancelOrder(), { wrapper });
+    const error = await result.current.mutateAsync(order.order_id).catch((caught: ApiClientError) => caught);
+    expect(error).toMatchObject({ code: "ORDER_PREPARATION_STARTED", status: 409 });
+  });
+
+  describe("useFulfillmentLookup", () => {
+    it("fetches nothing without an order id", () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      renderHook(() => useFulfillmentLookup(null), { wrapper });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("fetches one ticket, including a picked-up one", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(json({ order_id: order.order_id, status: "PICKED_UP", queue_number: "04" }));
+      vi.stubGlobal("fetch", fetchMock);
+      const { result } = renderHook(() => useFulfillmentLookup(order.order_id), { wrapper });
+      await waitFor(() => expect(result.current.data?.status).toBe("PICKED_UP"));
+      expect(fetchMock).toHaveBeenCalledWith(`/api/v1/fulfillments/${order.order_id}`, expect.any(Object));
+    });
+
+    it("treats 404 as no such ticket", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ code: "NOT_FOUND", message: "x" }, 404)));
+      const { result } = renderHook(() => useFulfillmentLookup(order.order_id), { wrapper });
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.data).toBeNull();
+    });
   });
 });
