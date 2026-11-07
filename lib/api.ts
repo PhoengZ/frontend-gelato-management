@@ -54,7 +54,8 @@ const friendlyMessages: Record<string, string> = {
   ORDER_STATE_CONFLICT: "สถานะคำสั่งซื้อเปลี่ยนไปแล้ว กรุณารีเฟรชแล้วลองอีกครั้ง",
   INVALID_TRANSITION: "เปลี่ยนสถานะออเดอร์นี้ไม่ได้ กรุณารีเฟรชรายการ",
   PORTIONS_LIMIT_EXCEEDED: "จำนวนสกู๊ปเกินจำนวนสูงสุดต่อคำสั่งซื้อ กรุณาลดจำนวนในตะกร้า",
-  PICKUP_NOT_SAME_DAY: "เลือกเวลารับสินค้าได้เฉพาะวันนี้เท่านั้น กรุณาเลือกเวลาใหม่"
+  PICKUP_NOT_SAME_DAY: "เลือกเวลารับสินค้าได้เฉพาะวันนี้เท่านั้น กรุณาเลือกเวลาใหม่",
+  ORDER_PREPARATION_STARTED: "ครัวเริ่มเตรียมออเดอร์นี้แล้ว จึงยกเลิกไม่ได้ กรุณารีเฟรชรายการ"
 };
 
 export class ApiClientError extends Error implements ApiError {

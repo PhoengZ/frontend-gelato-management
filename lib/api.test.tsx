@@ -108,7 +108,8 @@ describe("API hooks", () => {
     "ORDER_STATE_CONFLICT",
     "INVALID_TRANSITION",
     "PORTIONS_LIMIT_EXCEEDED",
-    "PICKUP_NOT_SAME_DAY"
+    "PICKUP_NOT_SAME_DAY",
+    "ORDER_PREPARATION_STARTED"
   ])("translates %s to Thai", async (code) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ code, message: "english from backend" }, 409)));
     const error = await requestJson("/api/v1/orders").catch((caught: ApiClientError) => caught);
