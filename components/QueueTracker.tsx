@@ -21,7 +21,7 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { useCancelOrder, useCreateOrder, useFulfillmentTicket, useOrder } from "@/lib/api";
-import { deriveOrderStatus, isFinalStatus, isPaidOrLater } from "@/lib/order-status";
+import { deriveOrderStatus, isFinalStatus, isPaidOrLater, isWaitingInQueue } from "@/lib/order-status";
 import { cn, formatMinor, formatTime } from "@/lib/utils";
 import { useCartStore } from "@/store/useCartStore";
 import { useReadyNotification } from "@/store/useNotificationStore";
@@ -51,6 +51,13 @@ const statusView: Record<OrderStatus, StatusView> = {
   READY_FOR_PICKUP: { title: "พร้อมรับแล้ว", description: "เจลาโตของคุณพร้อมแล้ว! แสดงหน้าจอนี้แก่พนักงานที่เคาน์เตอร์", tone: "ink", icon: BellRing, step: 2, image: readyCone },
   COMPLETED: { title: "รับสินค้าแล้ว", description: "ขอให้มีความสุขกับเจลาโตนะ แล้วพบกันใหม่!", tone: "success", icon: Check, step: 3 },
   CANCELLED: { title: "ยกเลิกแล้ว", description: "คำสั่งซื้อนี้ถูกยกเลิกและคืนสต็อกเรียบร้อยแล้ว", tone: "neutral", icon: X, step: -1 }
+};
+
+/** A PAID order whose ticket is QUEUED: payment is done and the kitchen has not started yet. */
+const queuedView: StatusView = {
+  ...statusView.PAID,
+  title: "รอคิวในครัว",
+  description: "ชำระเงินเรียบร้อยแล้ว ออเดอร์ของคุณอยู่ในคิว ครัวจะเริ่มเตรียมเร็ว ๆ นี้"
 };
 
 /** How long a return from Stripe waits for the webhook before offering Pay and Cancel again. */
@@ -232,7 +239,8 @@ export function QueueTracker({ orderId, returnedAt }: { orderId: string; returne
     );
   }
 
-  const view = confirmingPayment ? paymentConfirmationView : statusView[status];
+  const queued = status === "PAID" && isWaitingInQueue(order.status, ticket?.status);
+  const view = confirmingPayment ? paymentConfirmationView : queued ? queuedView : statusView[status];
   const Icon = view.icon;
   const spinning = confirmingPayment || status === "PAYMENT_CONFIRMING" || status === "CANCEL_PENDING";
   const cancelled = status === "CANCELLED";

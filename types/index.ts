@@ -184,7 +184,8 @@ export interface CheckoutResponse extends Order {
 
 // Fulfillment Service
 
-export type FulfillmentStatus = "PREPARING" | "READY_FOR_PICKUP" | "PICKED_UP" | "CANCELLED";
+/** QUEUED is the initial state: paid and waiting until the kitchen starts preparing. */
+export type FulfillmentStatus = "QUEUED" | "PREPARING" | "READY_FOR_PICKUP" | "PICKED_UP" | "CANCELLED";
 
 export interface FulfillmentItem {
   flavor_id: string;
@@ -205,8 +206,9 @@ export interface Fulfillment {
   updated_at: string;
 }
 
+/** Allowed moves: QUEUED to PREPARING, PREPARING to READY_FOR_PICKUP, READY_FOR_PICKUP to PICKED_UP. */
 export interface UpdateFulfillmentStatusRequest {
-  status: "READY_FOR_PICKUP" | "PICKED_UP";
+  status: "PREPARING" | "READY_FOR_PICKUP" | "PICKED_UP";
 }
 
 // Notification Service (SSE)

@@ -6,12 +6,16 @@ import { Bell, ChevronRight, Volume2, VolumeX } from "lucide-react";
 import { notificationTitles } from "@/components/NotificationStream";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useSession } from "@/lib/api";
+import { notificationText } from "@/lib/notification-text";
 import { cn, formatDateTime } from "@/lib/utils";
-import { useNotificationStore } from "@/store/useNotificationStore";import { notificationText } from "@/lib/notification-text";
+import { useNotificationStore } from "@/store/useNotificationStore";
+import type { UserRole } from "@/types";
 
-
-/** The bell and history sheet. The stream itself lives in NotificationStream, mounted by the layout. */
-export function CustomerNotification() {
+/**
+ * The bell and history sheet for the given roles. The stream itself lives in NotificationStream,
+ * mounted by the layout, which already limits the store to the types the signed-in role gets.
+ */
+export function NotificationBell({ roles, label, className }: { roles: UserRole[]; label: string; className?: string }) {
   const session = useSession();
   const user = session.data;
   const notifications = useNotificationStore((state) => state.notifications);
@@ -19,18 +23,17 @@ export function CustomerNotification() {
   const soundMuted = useNotificationStore((state) => state.soundMuted);
   const setSoundMuted = useNotificationStore((state) => state.setSoundMuted);
   const [isOpen, setIsOpen] = useState(false);
-  const isCustomer = user?.role === "CUSTOMER";
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  if (!isCustomer) return null;
+  if (!user || !roles.includes(user.role)) return null;
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
         <button
-          className="relative grid h-10 w-10 place-items-center rounded-full text-ink transition-colors hover:bg-ink/5"
-          aria-label={unreadCount ? `แจ้งเตือนสถานะคิว (${unreadCount} รายการใหม่)` : "แจ้งเตือนสถานะคิว"}
+          className={cn("relative grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink transition-colors hover:bg-ink/5", className)}
+          aria-label={unreadCount ? `${label} (${unreadCount} รายการใหม่)` : label}
         >
           <Bell className="h-[22px] w-[22px]" strokeWidth={1.75} />
           {unreadCount > 0 && <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-canvas bg-pink" aria-hidden="true" />}
@@ -72,9 +75,7 @@ export function CustomerNotification() {
                   </p>
                   <span className="shrink-0 text-xs text-subtle">{formatDateTime(notif.occurred_at)}</span>
                 </div>
-                <p className="mt-1 text-[13px] text-subtle">
-                  {notificationText(notif)}
-                </p>
+                <p className="mt-1 text-[13px] text-subtle">{notificationText(notif)}</p>
                 {notif.data.order_id && (
                   <Link href={`/queue/${notif.data.order_id}`} onClick={() => setIsOpen(false)} className="mt-2 inline-flex items-center gap-0.5 text-sm font-medium hover:underline">
                     ดูสถานะคำสั่งซื้อ <ChevronRight className="h-4 w-4" />
@@ -87,4 +88,9 @@ export function CustomerNotification() {
       </SheetContent>
     </Sheet>
   );
+}
+
+/** The storefront bell: a customer's order notifications. */
+export function CustomerNotification() {
+  return <NotificationBell roles={["CUSTOMER"]} label="แจ้งเตือนสถานะคิว" />;
 }

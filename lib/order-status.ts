@@ -11,8 +11,13 @@ export function isFinalStatus(status: OrderStatus) {
   return FINAL.includes(status);
 }
 
+/** A paid order whose Fulfillment ticket is in the kitchen queue, before preparation starts. */
+export function isWaitingInQueue(orderStatus: OrderStatus, ticketStatus: FulfillmentStatus | null | undefined) {
+  return isPaidOrLater(orderStatus) && !isFinalStatus(orderStatus) && ticketStatus === "QUEUED";
+}
+
 /**
- * The status a customer should see. Order never moves past PAID, so kitchen progress comes
+ * The status a customer should see. A QUEUED ticket stays at PAID (see isWaitingInQueue). Order never moves past PAID, so kitchen progress comes
  * from the Fulfillment ticket. The `order.ready` notification only moves READY_FOR_PICKUP
  * forward before the next ticket poll; it can never override a later ticket state.
  */

@@ -113,6 +113,33 @@ describe("forwardToBackend", () => {
     });
   });
 
+  describe("store cancel", () => {
+    const order = "8d29d6cf-bd4d-48ca-9e4f-dcd8ec54e594";
+    const path = ["orders", order, "store-cancel"];
+    const request = (session?: string) => browserRequest(path.join("/"), { method: "POST", session, body: "{}" });
+
+    it("requires a session", async () => {
+      expect((await forwardToBackend(request(), path)).status).toBe(401);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("is closed to customers", async () => {
+      expect((await forwardToBackend(request(customer), path)).status).toBe(403);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("is open to staff and managers", async () => {
+      expect((await forwardToBackend(request(staff), path)).status).toBe(200);
+      expect((await forwardToBackend(request(manager), path)).status).toBe(200);
+      expect(fetchMock.mock.calls[0][0]).toBe(`http://gateway:8080/api/v1/orders/${order}/store-cancel`);
+    });
+
+    it("leaves the customer's own cancel to the Order Service", async () => {
+      const own = ["orders", order, "cancel"];
+      expect((await forwardToBackend(browserRequest(own.join("/"), { method: "POST", session: customer, body: "{}" }), own)).status).toBe(200);
+    });
+  });
+
   describe("cross-site protection", () => {
     it("rejects cross-site mutations before contacting the backend", async () => {
       const response = await forwardToBackend(

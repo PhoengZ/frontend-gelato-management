@@ -23,10 +23,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * Role checks applied here before forwarding, as a first line in front of the owning services.
  * Fulfillment lets a customer read the ticket of their own order (any other ticket is a 404
  * from the service, per contracts/openapi/fulfillment-service.v1.yaml), so only that single GET
- * is open to customers.
+ * is open to customers. Store cancellation is a counter action, so it is closed to customers
+ * even though the Order Service also checks the role.
  */
 function requiredRoles(method: string, path: string[]): UserRole[] | null {
   if (path[0] === "analytics") return ["MANAGER"];
+  if (path[0] === "orders" && path[2] === "store-cancel") return ["STAFF", "MANAGER"];
   if (path[0] !== "fulfillments") return null;
   const isTicketRead = method === "GET" && path.length === 2 && UUID.test(path[1]);
   return isTicketRead ? ["CUSTOMER", "STAFF", "MANAGER"] : ["STAFF", "MANAGER"];

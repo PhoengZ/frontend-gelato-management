@@ -7,10 +7,15 @@ import { toast } from "sonner";
 import { useSession } from "@/lib/api";
 import { adoptSessionUser } from "@/store/account";
 import { useNotificationStore } from "@/store/useNotificationStore";
-import type { AppNotification, NotificationType } from "@/types";import { notificationText } from "@/lib/notification-text";
+import { notificationText } from "@/lib/notification-text";
+import type { AppNotification, NotificationType, UserRole } from "@/types";
 
-
-const NOTIFICATION_TYPES: NotificationType[] = ["order.confirmed", "order.ready", "order.cancelled"];
+/** Customers hear about their own orders; staff and managers get the inventory role broadcasts. */
+const NOTIFICATION_TYPES: Record<UserRole, NotificationType[]> = {
+  CUSTOMER: ["order.confirmed", "order.ready", "order.cancelled"],
+  STAFF: ["inventory.low_stock", "inventory.expiring"],
+  MANAGER: ["inventory.low_stock", "inventory.expiring"]
+};
 const RECONNECT_DELAY_MS = 15_000;
 
 export const notificationTitles: Record<NotificationType, string> = {
@@ -67,16 +72,23 @@ function showToast(notification: AppNotification) {
   ), { duration: 6000 });
 }
 
+export function streamUrl(lastEventId: string | undefined) {
+  const base = "/api/v1/notifications/stream";
+  return lastEventId ? `${base}?last_event_id=${encodeURIComponent(lastEventId)}` : base;
+}
+
 /**
  * Subscribes to the Notification Service SSE stream through the same-origin proxy, which turns
- * the session cookie into a Bearer token. Delivery is best effort and not replayed, so this is
+ * the session cookie into a Bearer token. Each (re)connect passes the owner's last received id
+ * so the service replays what was missed; without one it replays everything still buffered
+ * (about five minutes). Replayed frames are dropped by the store's dedupe by id. This is still
  * only a fast path: QueueTracker polls Order and the Fulfillment ticket as the source of truth.
  * Writes are tagged with the user the stream was opened for, so a frame arriving after a logout
  * or an account switch is refused by the store.
  */
-function useNotificationStream(userId: string | null) {
+function useNotificationStream(userId: string | null, role: UserRole | undefined) {
   useEffect(() => {
-    if (!userId || typeof EventSource === "undefined") return;
+    if (!userId || !role || typeof EventSource === "undefined") return;
     let source: EventSource | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
 
@@ -93,8 +105,8 @@ function useNotificationStream(userId: string | null) {
     };
 
     const connect = () => {
-      source = new EventSource("/api/v1/notifications/stream");
-      for (const type of NOTIFICATION_TYPES) source.addEventListener(type, onNotification as EventListener);
+      source = new EventSource(streamUrl(useNotificationStore.getState().lastEventIds[userId]));
+      for (const type of NOTIFICATION_TYPES[role]) source.addEventListener(type, onNotification as EventListener);
       source.onerror = () => {
         // The browser retries dropped connections itself; a rejected one (e.g. 401) is closed.
         if (source?.readyState === EventSource.CLOSED) retry = setTimeout(connect, RECONNECT_DELAY_MS);
@@ -106,7 +118,7 @@ function useNotificationStream(userId: string | null) {
       clearTimeout(retry);
       source?.close();
     };
-  }, [userId]);
+  }, [userId, role]);
 }
 
 /**
@@ -124,7 +136,8 @@ export function NotificationStream() {
   }, [userId]);
 
   // Watching the owner also closes the stream on logout, which clears the store.
-  useNotificationStream(user?.role === "CUSTOMER" && user.id === ownerId ? user.id : null);
+  const ownsStore = Boolean(user && user.id === ownerId);
+  useNotificationStream(ownsStore ? user!.id : null, ownsStore ? user!.role : undefined);
 
   return null;
 }
